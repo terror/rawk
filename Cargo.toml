@@ -1,0 +1,10 @@
+[package]
+name = "rawk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+ariadne = "0.5.1"
+chumsky = "0.10.1"
+clap = { version = "4.5.45", features = ["derive"] }
