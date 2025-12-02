@@ -19,7 +19,7 @@ check:
 
 [group: 'check']
 ci: test clippy forbid
-  cargo +nightly fmt --all -- --check
+  cargo fmt --all -- --check
   cargo update --locked --package rawk
 
 [group: 'check']
@@ -28,11 +28,11 @@ clippy:
 
 [group: 'format']
 fmt:
-  cargo +nightly fmt
+  cargo fmt
 
 [group: 'format']
 fmt-check:
-  cargo +nightly fmt --all -- --check
+  cargo fmt --all -- --check
 
 [group: 'check']
 forbid:
@@ -42,25 +42,9 @@ forbid:
 install:
   cargo install -f rawk
 
-[group: 'dev']
-install-dev-deps:
-  rustup install nightly
-  rustup update nightly
-  cargo install cargo-watch
-
 [group: 'release']
 publish:
-  #!/usr/bin/env bash
-  set -euxo pipefail
-  rm -rf tmp/release
-  gh repo clone https://github.com/terror/rawk tmp/release
-  cd tmp/release
-  VERSION=`sed -En 's/version[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' Cargo.toml | head -1`
-  git tag -a $VERSION -m "Release $VERSION"
-  git push origin $VERSION
-  cargo publish
-  cd ../..
-  rm -rf tmp/release
+  ./bin/publish
 
 [group: 'dev']
 run *args:
@@ -76,11 +60,6 @@ test-release-workflow:
   -git push origin :test-release
   git tag test-release
   git push origin test-release
-
-[group: 'release']
-update-changelog:
-  echo >> CHANGELOG.md
-  git log --pretty='format:- %s' >> CHANGELOG.md
 
 [group: 'dev']
 watch +COMMAND='test':
