@@ -48,7 +48,7 @@ publish:
 
 [group: 'dev']
 run *args:
-  cargo run -- {{args}}
+  cargo run {{ args }}
 
 [group: 'test']
 test:
@@ -63,4 +63,4 @@ test-release-workflow:
 
 [group: 'dev']
 watch +COMMAND='test':
-  cargo watch --clear --exec "{{COMMAND}}"
+  cargo watch --clear --exec "{{ COMMAND }}"
