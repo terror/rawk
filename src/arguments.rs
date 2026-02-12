@@ -28,6 +28,10 @@ impl Arguments {
       .finish()
   }
 
+  fn parse_file(path: &Path) -> Result {
+    Self::parse_source(&path.to_string_lossy(), &fs::read_to_string(path)?)
+  }
+
   fn parse_source(name: &str, source: &str) -> Result {
     let (tokens, lex_errors) = lexer::lex(source);
 
@@ -55,10 +59,6 @@ impl Arguments {
       Some(_) => Ok(()),
       None => bail!("parser produced no output"),
     }
-  }
-
-  fn parse_file(path: &Path) -> Result {
-    Self::parse_source(&path.to_string_lossy(), &fs::read_to_string(path)?)
   }
 
   pub(crate) fn run(self) -> Result {

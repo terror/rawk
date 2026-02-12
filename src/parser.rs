@@ -2,6 +2,31 @@ use super::*;
 
 pub(crate) type ParseError<'src> = Rich<'src, Token, Span>;
 
+pub(crate) fn parse(
+  tokens: Option<Vec<Spanned<Token>>>,
+  source_len: usize,
+) -> (Option<Program>, Vec<ParseError<'static>>) {
+  let Some(tokens) = tokens else {
+    return (None, Vec::new());
+  };
+
+  let result = parser().parse(
+    Stream::from_iter(tokens)
+      .map(Span::new((), source_len..source_len), |(token, span)| {
+        (token, span)
+      }),
+  );
+
+  (
+    result.output().cloned(),
+    result
+      .into_errors()
+      .into_iter()
+      .map(Rich::into_owned)
+      .collect(),
+  )
+}
+
 fn parser<'src, I>()
 -> impl Parser<'src, I, Program, extra::Err<ParseError<'src>>>
 where
@@ -65,7 +90,7 @@ where
       .or_not()
       .then(block.clone())
       .map(|(pattern, action)| {
-        TopLevelItem::PatternAction(PatternAction { pattern, action })
+        TopLevelItem::PatternAction(PatternAction { action, pattern })
       });
 
   function_definition
@@ -74,30 +99,4 @@ where
     .collect::<Vec<_>>()
     .then_ignore(end())
     .map(|items| Program { items })
-}
-
-pub(crate) fn parse(
-  tokens: Option<Vec<Spanned<Token>>>,
-  source_len: usize,
-) -> (Option<Program>, Vec<ParseError<'static>>) {
-  let tokens = match tokens {
-    Some(tokens) => tokens,
-    None => return (None, Vec::new()),
-  };
-
-  let result = parser().parse(
-    Stream::from_iter(tokens)
-      .map(Span::new((), source_len..source_len), |(token, span)| {
-        (token, span)
-      }),
-  );
-
-  (
-    result.output().cloned(),
-    result
-      .into_errors()
-      .into_iter()
-      .map(|error| error.into_owned())
-      .collect(),
-  )
 }

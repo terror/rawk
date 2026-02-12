@@ -4,6 +4,32 @@ pub(crate) type Span = SimpleSpan<usize>;
 pub(crate) type Spanned<T> = (T, Span);
 pub(crate) type LexError<'src> = Rich<'src, char, Span>;
 
+pub(crate) fn lex(
+  source: &str,
+) -> (Option<Vec<Spanned<Token>>>, Vec<LexError<'_>>) {
+  let result = lexer().parse(source);
+  (result.output().cloned(), result.into_errors())
+}
+
+pub(crate) fn lexer<'src>()
+-> impl Parser<'src, &'src str, Vec<Spanned<Token>>, extra::Err<LexError<'src>>>
+{
+  let whitespace = one_of(" \t\r\n").repeated().at_least(1).ignored();
+
+  let comment = just('#')
+    .then(any().filter(|c| *c != '\n').repeated())
+    .ignored();
+
+  let padding = whitespace.or(comment).repeated();
+
+  token_parser()
+    .map_with(|token, extra| (token, extra.span()))
+    .padded_by(padding)
+    .repeated()
+    .collect()
+    .then_ignore(end())
+}
+
 fn token_parser<'src>()
 -> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
   let identifier =
@@ -43,30 +69,4 @@ fn token_parser<'src>()
     double_quoted,
     punctuation,
   ))
-}
-
-pub(crate) fn lexer<'src>()
--> impl Parser<'src, &'src str, Vec<Spanned<Token>>, extra::Err<LexError<'src>>>
-{
-  let whitespace = one_of(" \t\r\n").repeated().at_least(1).ignored();
-
-  let comment = just('#')
-    .then(any().filter(|c| *c != '\n').repeated())
-    .ignored();
-
-  let padding = whitespace.or(comment).repeated();
-
-  token_parser()
-    .map_with(|token, extra| (token, extra.span()))
-    .padded_by(padding)
-    .repeated()
-    .collect()
-    .then_ignore(end())
-}
-
-pub(crate) fn lex(
-  source: &str,
-) -> (Option<Vec<Spanned<Token>>>, Vec<LexError<'_>>) {
-  let result = lexer().parse(source);
-  (result.output().cloned(), result.into_errors())
 }
