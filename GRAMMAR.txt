@@ -1,0 +1,289 @@
+awk-program ::= { top-level-element | comment }
+
+top-level-element ::=
+    function-definition
+  | pattern-action-pair
+
+function-definition ::=
+  "function" identifier "(" [ identifier-list ] ")" compound-statements
+
+pattern-action-pair ::=
+  [ pattern ] action
+
+action ::=
+  compound-statements
+
+pattern ::=
+    expression-range
+  | "BEGIN"
+  | "END"
+
+expression-range ::=
+  expression [ "," expression ]
+
+compound-labeled ::=
+  "{" labeled-statement-list "}"
+
+compound-statements ::=
+  "{" statement-list "}"
+
+labeled-statement-list ::=
+  labeled-statement { terminate labeled-statement }
+
+labeled-statement ::=
+  label ":" statement-list
+
+label ::=
+    "case" identifier
+  | "default"
+
+statement-list ::=
+  statement { terminate statement }
+
+statement ::=
+    expression-statement
+  | print-statement
+  | printf-statement
+  | for-statement
+  | do-while-statement
+  | while-statement
+  | if-statement
+  | switch-statement
+  | controlflow-statement
+  | memory-statement
+
+memory-statement ::=
+  "delete" variable
+
+controlflow-statement ::=
+    "break"
+  | "continue"
+  | "next"
+  | "return" expression
+
+switch-statement ::=
+  "switch" "(" expression ")" compound-labeled
+
+if-statement ::=
+  "if" "(" expression ")" compound-statements
+  [ "else" ( if-statement | compound-statements ) ]
+
+while-statement ::=
+  "while" "(" expression ")" compound-statements
+
+do-while-statement ::=
+  "do" compound-statements "while" "(" expression ")"
+
+for-statement ::=
+  "for" "(" [ expr-list [ ";" expr-list ";" expr-list ] ] ")"
+  compound-statements
+
+printf-statement ::=
+  "printf" format-string "," expr-list [ output-redirection ] terminate
+
+print-statement ::=
+  "print" expr-list [ output-redirection ] terminate
+
+expression-statement ::=
+  expression terminate
+
+output-redirection ::=
+    ">"  string-const
+  | ">>" string-const
+  | "|"  string-const
+
+expr-list ::=
+  expression { "," expression }
+
+expression ::=
+    primary
+  | unary-expr
+  | binary-expr
+  | ternary-expr
+  | assign-expr
+
+assign-expr ::=
+    variable "^=" expression
+  | variable "%=" expression
+  | variable "*=" expression
+  | variable "/=" expression
+  | variable "+=" expression
+  | variable "-=" expression
+  | variable "="  expression
+
+ternary-expr ::=
+  binary-expr "?" binary-expr ":" binary-expr
+
+binary-expr ::=
+  logical-or-expr
+
+logical-or-expr ::=
+  logical-and-expr "||" logical-or-expr
+
+logical-and-expr ::=
+  in-expr "&&" logical-and-expr
+
+in-expr ::=
+  match-expr "in" variable
+
+match-expr ::=
+    relop-expr "~"  match-expr
+  | relop-expr "!~" match-expr
+
+relop-expr ::=
+    concat-expr "<"  relop-expr
+  | concat-expr "<=" relop-expr
+  | concat-expr "!=" relop-expr
+  | concat-expr "==" relop-expr
+  | concat-expr ">"  relop-expr
+  | concat-expr ">=" relop-expr
+
+concat-expr ::=
+  additive-expr concat-expr
+
+additive-expr ::=
+    multiplicative-expr "+" additive-expr
+  | multiplicative-expr "-" additive-expr
+
+multiplicative-expr ::=
+    exponential-expr "*" multiplicative-expr
+  | exponential-expr "/" multiplicative-expr
+  | exponential-expr "%" multiplicative-expr
+
+exponential-expr ::=
+  unary-expr "^" exponential-expr
+
+unary-expr ::=
+    "+"  primary
+  | "-"  primary
+  | "!"  primary
+  | "~"  primary
+  | "$"  primary
+  | "++" primary
+  | "--" primary
+  | postfix-expr
+
+postfix-expr ::=
+    primary "++"
+  | primary "--"
+
+primary ::=
+    variable
+  | const-literal
+  | getline
+  | identifier "(" [ expr-list ] ")"
+  | "(" expr ")"
+
+getline ::=
+  [ string-const "|" ] "getline" [ variable ] [ "<" string-const ]
+
+variable ::=
+  identifier [ index ]
+
+index ::=
+  "[" { alphanumeric } "]"
+
+identifier-list ::=
+  identifier { "," identifier }
+
+identifier ::=
+  alphabetic { alphanumeric | "_" }
+
+alphanumeric ::=
+  letter | int-digit
+
+alphabetic ::=
+  upper-case | lower-case
+
+upper-case ::=
+  "A" | "B" | "C" | ... | "X" | "Y" | "Z"
+
+lower-case ::=
+  "a" | "b" | "c" | ... | "x" | "y" | "z"
+
+format-string ::=
+    "\"" { format-glyph } "\""
+  | "'"  { format-glyph } "'"
+
+const-literal ::=
+    regex-const
+  | string-const
+  | float-const
+  | integer-const
+
+regex-const ::=
+  "/" { vis-glyph } "/"
+
+string-const ::=
+    "\"" { vis-glyph } "\""
+  | "'"  { vis-glyph } "'"
+
+float-const ::=
+  [ dec-integer ] "." dec-integer
+
+integer-const ::=
+    dec-integer
+  | hex-integer
+  | oct-integer
+  | bin-integer
+
+dec-integer ::=
+  int-digit { int-digit }
+
+hex-integer ::=
+  ( "0x" | "0X" ) hex-digit { hex-digit }
+
+oct-integer ::=
+  ( "0o" | "0O" ) oct-digit { oct-digit }
+
+bin-integer ::=
+  ( "0b" | "0B" ) bin-digit { bin-digit }
+
+hex-digit ::=
+    int-digit | "a" | "b" | "c" | "d" | "e" | "f"
+  |             "A" | "B" | "C" | "D" | "E" | "F"
+
+int-digit ::=
+  oct-digit | "8" | "9"
+
+oct-digit ::=
+  bin-digit | "2" | "3" | "4" | "5" | "6" | "7"
+
+bin-digit ::=
+  "0" | "1"
+
+format-glyph ::=
+  vis-glyph | format-tag
+
+format-tag ::=
+  "%" no-percentage
+
+vis-glyph ::=
+  printable | c-escape
+
+printable ::=
+  " " | "!" | ... | "}" | "~"
+
+c-escape ::=
+    "\\" ( "'" | "\"" | "n" | "t" | "r" | "b" | "f" | "v" | "a" | "?" | "0" | "\\" )
+  | "\\" oct-digit oct-digit oct-digit
+  | "\\x" hex-digit hex-digit
+  | "\\U" hex-digit hex-digit hex-digit hex-digit
+
+comment ::=
+  "# " { no-newline } sys-newline
+
+no-percentage ::=
+  ? any character except percentage sign ?
+
+no-newline ::=
+  ? any character except sys-newline ?
+
+terminate ::=
+  [ ";" ] sys-newline
+
+whitespace ::=
+  ? space and horizontal tab ?
+
+sys-newline ::=
+  ? system newline character ?
