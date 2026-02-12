@@ -3,6 +3,19 @@ name = "rawk"
 version = "0.1.0"
 edition = "2024"
 
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+arbitrary-source-item-ordering = "deny"
+pedantic = { level = "deny", priority = -1 }
+wildcard_imports = "allow"
+
+[lints.rust]
+unreachable_pub = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
 [dependencies]
 anyhow = "1.0.98"
 ariadne = "0.5.1"

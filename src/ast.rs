@@ -11,15 +11,15 @@ pub(crate) enum TopLevelItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FunctionDefinition {
+  pub(crate) body: Block,
   pub(crate) name: String,
   pub(crate) parameters: Vec<String>,
-  pub(crate) body: Block,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PatternAction {
-  pub(crate) pattern: Option<Pattern>,
   pub(crate) action: Block,
+  pub(crate) pattern: Option<Pattern>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +36,6 @@ pub(crate) struct Block {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BlockItem {
-  TokenStub,
   Block(Block),
+  TokenStub,
 }
