@@ -134,6 +134,7 @@ where
   I: ValueInput<'src, Token = Token, Span = Span>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
+
   let string = select! { Token::String(string) => string };
 
   let expr = expression_parser();
