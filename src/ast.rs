@@ -36,9 +36,65 @@ pub(crate) struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OutputRedirection {
+  Append(String),
+  Pipe(String),
+  Write(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SwitchLabel {
+  Case(Expression),
+  Default,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwitchCase {
+  pub(crate) label: SwitchLabel,
+  pub(crate) statements: Vec<BlockItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BlockItem {
   Block(Block),
+  Break,
+  Continue,
+  Delete(Expression),
+  DoWhile {
+    body: Block,
+    condition: Expression,
+  },
   Expression(Expression),
+  For {
+    body: Block,
+    condition: Option<Vec<Expression>>,
+    initializer: Option<Vec<Expression>>,
+    update: Option<Vec<Expression>>,
+  },
+  If {
+    condition: Expression,
+    else_branch: Option<Block>,
+    then_branch: Block,
+  },
+  Next,
+  Print {
+    arguments: Vec<Expression>,
+    redirection: Option<OutputRedirection>,
+  },
+  Printf {
+    arguments: Vec<Expression>,
+    format: String,
+    redirection: Option<OutputRedirection>,
+  },
+  Return(Expression),
+  Switch {
+    cases: Vec<SwitchCase>,
+    expression: Expression,
+  },
+  While {
+    body: Block,
+    condition: Expression,
+  },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
