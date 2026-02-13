@@ -37,6 +37,23 @@ fn token_parser<'src>()
       "function" => Token::Function,
       "BEGIN" => Token::Begin,
       "END" => Token::End,
+      "if" => Token::If,
+      "else" => Token::Else,
+      "for" => Token::For,
+      "while" => Token::While,
+      "do" => Token::Do,
+      "switch" => Token::Switch,
+      "case" => Token::Case,
+      "default" => Token::Default,
+      "print" => Token::Print,
+      "printf" => Token::Printf,
+      "delete" => Token::Delete,
+      "break" => Token::Break,
+      "continue" => Token::Continue,
+      "next" => Token::Next,
+      "return" => Token::Return,
+      "getline" => Token::Getline,
+      "in" => Token::In,
       _ => Token::Identifier(identifier.to_string()),
     });
 
@@ -120,14 +137,33 @@ mod tests {
   #[test]
   fn identifiers_and_keywords() {
     Test::new()
-      .input("function BEGIN END foo _bar baz123")
+      .input(
+        "function BEGIN END if else for while do switch case default print printf delete break continue next return getline in foo _bar baz123",
+      )
       .expected([
         (Token::Function, 0..8),
         (Token::Begin, 9..14),
         (Token::End, 15..18),
-        (Token::Identifier("foo".to_string()), 19..22),
-        (Token::Identifier("_bar".to_string()), 23..27),
-        (Token::Identifier("baz123".to_string()), 28..34),
+        (Token::If, 19..21),
+        (Token::Else, 22..26),
+        (Token::For, 27..30),
+        (Token::While, 31..36),
+        (Token::Do, 37..39),
+        (Token::Switch, 40..46),
+        (Token::Case, 47..51),
+        (Token::Default, 52..59),
+        (Token::Print, 60..65),
+        (Token::Printf, 66..72),
+        (Token::Delete, 73..79),
+        (Token::Break, 80..85),
+        (Token::Continue, 86..94),
+        (Token::Next, 95..99),
+        (Token::Return, 100..106),
+        (Token::Getline, 107..114),
+        (Token::In, 115..117),
+        (Token::Identifier("foo".to_string()), 118..121),
+        (Token::Identifier("_bar".to_string()), 122..126),
+        (Token::Identifier("baz123".to_string()), 127..133),
       ])
       .run();
   }
