@@ -56,6 +56,59 @@ where
   ))
 }
 
+fn block_parser<'src, I>(
+  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  output_redirection: impl Parser<
+    'src,
+    I,
+    OutputRedirection,
+    extra::Err<ParseError<'src>>,
+  > + Clone
+  + 'src,
+) -> impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  recursive(|block| {
+    let statement = recursive(|statement| {
+      statement_parser(
+        expr.clone(),
+        expr_list.clone(),
+        output_redirection.clone(),
+        block.clone(),
+        statement,
+      )
+    });
+
+    block
+      .clone()
+      .map(BlockItem::Block)
+      .or(statement)
+      .repeated()
+      .collect::<Vec<_>>()
+      .delimited_by(just(Token::LBrace), just(Token::RBrace))
+      .map(|items| Block { items })
+  })
+}
+fn expr_list_parser<'src, I>(
+  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+) -> impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  expr
+    .separated_by(just(Token::Comma))
+    .allow_trailing()
+    .at_least(1)
+    .collect::<Vec<_>>()
+}
 fn expression_parser<'src, I>()
 -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
 where
@@ -101,7 +154,61 @@ where
     )
   })
 }
-
+fn if_statement_parser<'src, I>(
+  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
+  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  just(Token::If)
+    .ignore_then(
+      expr
+        .clone()
+        .delimited_by(just(Token::LParen), just(Token::RParen)),
+    )
+    .then(block.clone())
+    .then(
+      just(Token::Else)
+        .ignore_then(block.clone().or(statement.clone().try_map(
+          |statement, span| match statement {
+            if_statement @ BlockItem::If { .. } => Ok(Block {
+              items: vec![if_statement],
+            }),
+            _ => Err(Rich::custom(span, "expected if statement")),
+          },
+        )))
+        .or_not(),
+    )
+    .map(|((condition, then_branch), else_branch)| BlockItem::If {
+      condition,
+      else_branch,
+      then_branch,
+    })
+}
+fn output_redirection_parser<'src, I>(
+  string: impl Parser<'src, I, String, extra::Err<ParseError<'src>>> + Clone + 'src,
+) -> impl Parser<'src, I, OutputRedirection, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  choice((
+    just(Token::GreaterGreater)
+      .ignore_then(string.clone())
+      .map(OutputRedirection::Append),
+    just(Token::Greater)
+      .ignore_then(string.clone())
+      .map(OutputRedirection::Write),
+    just(Token::Pipe)
+      .ignore_then(string)
+      .map(OutputRedirection::Pipe),
+  ))
+}
 pub(crate) fn parse(
   tokens: Option<Vec<Spanned<Token>>>,
   source_len: usize,
@@ -126,8 +233,6 @@ pub(crate) fn parse(
       .collect(),
   )
 }
-
-#[allow(clippy::too_many_lines)]
 fn parser<'src, I>()
 -> impl Parser<'src, I, Program, extra::Err<ParseError<'src>>>
 where
@@ -135,209 +240,22 @@ where
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
-  let string = select! { Token::String(string) => string };
-
   let expr = expression_parser();
 
-  let expr_list = expr
-    .clone()
-    .separated_by(just(Token::Comma))
-    .allow_trailing()
-    .at_least(1)
-    .collect::<Vec<_>>();
+  let expr_list = expr_list_parser(expr.clone());
 
-  let output_redirection = choice((
-    just(Token::GreaterGreater)
-      .ignore_then(string)
-      .map(OutputRedirection::Append),
-    just(Token::Greater)
-      .ignore_then(string)
-      .map(OutputRedirection::Write),
-    just(Token::Pipe)
-      .ignore_then(string)
-      .map(OutputRedirection::Pipe),
-  ));
+  let output_redirection =
+    output_redirection_parser(select! { Token::String(string) => string });
 
-  let pattern = choice((
-    just(Token::Begin).to(Pattern::Begin),
-    just(Token::End).to(Pattern::End),
-    expr.clone().map(Pattern::Expression),
-  ));
-
-  let block = recursive(|block| {
-    let statement = recursive(|statement| {
-      let expression_statement = expr.clone().map(BlockItem::Expression);
-
-      let print_item = just(Token::Print)
-        .ignore_then(expr_list.clone())
-        .then(output_redirection.clone().or_not())
-        .map(|(arguments, redirection)| BlockItem::Print {
-          arguments,
-          redirection,
-        });
-
-      let printf_item = just(Token::Printf)
-        .ignore_then(string)
-        .then_ignore(just(Token::Comma))
-        .then(expr_list.clone())
-        .then(output_redirection.clone().or_not())
-        .map(|((format, arguments), redirection)| BlockItem::Printf {
-          arguments,
-          format,
-          redirection,
-        });
-
-      let for_classic = expr_list
-        .clone()
-        .or_not()
-        .then_ignore(just(Token::Semicolon))
-        .then(expr_list.clone().or_not())
-        .then_ignore(just(Token::Semicolon))
-        .then(expr_list.clone().or_not())
-        .map(|((initializer, condition), update)| {
-          (initializer, condition, update)
-        });
-
-      let for_simple = expr_list
-        .clone()
-        .map(|initializer| (Some(initializer), None, None));
-
-      let for_statement = just(Token::For)
-        .ignore_then(
-          choice((for_classic, for_simple, empty().to((None, None, None))))
-            .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .then(block.clone())
-        .map(|((initializer, condition, update), body)| BlockItem::For {
-          body,
-          condition,
-          initializer,
-          update,
-        });
-
-      let do_while_statement = just(Token::Do)
-        .ignore_then(block.clone())
-        .then_ignore(just(Token::While))
-        .then(
-          expr
-            .clone()
-            .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .map(|(body, condition)| BlockItem::DoWhile { body, condition });
-
-      let while_statement = just(Token::While)
-        .ignore_then(
-          expr
-            .clone()
-            .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .then(block.clone())
-        .map(|(condition, body)| BlockItem::While { body, condition });
-
-      let if_statement = just(Token::If)
-        .ignore_then(
-          expr
-            .clone()
-            .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .then(block.clone())
-        .then(
-          just(Token::Else)
-            .ignore_then(block.clone().or(statement.clone().try_map(
-              |statement, span| match statement {
-                if_statement @ BlockItem::If { .. } => Ok(Block {
-                  items: vec![if_statement],
-                }),
-                _ => Err(Rich::custom(span, "expected if statement")),
-              },
-            )))
-            .or_not(),
-        )
-        .map(|((condition, then_branch), else_branch)| BlockItem::If {
-          condition,
-          else_branch,
-          then_branch,
-        });
-
-      let switch_label = choice((
-        just(Token::Case)
-          .ignore_then(expr.clone())
-          .map(SwitchLabel::Case),
-        just(Token::Default).to(SwitchLabel::Default),
-      ));
-
-      let switch_case = switch_label
-        .then_ignore(just(Token::Colon))
-        .then(
-          statement
-            .clone()
-            .then_ignore(just(Token::Semicolon).repeated())
-            .repeated()
-            .collect::<Vec<_>>(),
-        )
-        .map(|(label, statements)| SwitchCase { label, statements });
-
-      let switch_statement = just(Token::Switch)
-        .ignore_then(
-          expr
-            .clone()
-            .delimited_by(just(Token::LParen), just(Token::RParen)),
-        )
-        .then(
-          switch_case
-            .repeated()
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-        )
-        .map(|(expression, cases)| BlockItem::Switch { cases, expression });
-
-      let controlflow_statement = choice((
-        just(Token::Break).to(BlockItem::Break),
-        just(Token::Continue).to(BlockItem::Continue),
-        just(Token::Next).to(BlockItem::Next),
-        just(Token::Return)
-          .ignore_then(expr.clone())
-          .map(BlockItem::Return),
-      ));
-
-      let memory_statement = just(Token::Delete)
-        .ignore_then(expr.clone())
-        .map(BlockItem::Delete);
-
-      choice((
-        print_item,
-        printf_item,
-        for_statement,
-        do_while_statement,
-        while_statement,
-        if_statement,
-        switch_statement,
-        controlflow_statement,
-        memory_statement,
-        expression_statement,
-      ))
-      .then_ignore(just(Token::Semicolon).repeated())
-    });
-
-    let item = block.clone().map(BlockItem::Block).or(statement);
-
-    item
-      .repeated()
-      .collect::<Vec<_>>()
-      .delimited_by(just(Token::LBrace), just(Token::RBrace))
-      .map(|items| Block { items })
-  });
-
-  let parameter_list = identifier
-    .separated_by(just(Token::Comma))
-    .allow_trailing()
-    .collect::<Vec<_>>();
+  let block = block_parser(expr.clone(), expr_list, output_redirection);
 
   let function_definition = just(Token::Function)
     .ignore_then(identifier)
     .then(
-      parameter_list
+      identifier
+        .separated_by(just(Token::Comma))
+        .allow_trailing()
+        .collect::<Vec<_>>()
         .or_not()
         .delimited_by(just(Token::LParen), just(Token::RParen)),
     )
@@ -350,23 +268,21 @@ where
       })
     });
 
-  let pattern_action =
-    pattern
-      .or_not()
-      .then(block.clone())
-      .map(|(pattern, action)| {
-        TopLevelItem::PatternAction(PatternAction { action, pattern })
-      });
+  let pattern = choice((
+    just(Token::Begin).to(Pattern::Begin),
+    just(Token::End).to(Pattern::End),
+    expr.map(Pattern::Expression),
+  ));
 
   function_definition
-    .or(pattern_action)
+    .or(pattern.or_not().then(block).map(|(pattern, action)| {
+      TopLevelItem::PatternAction(PatternAction { action, pattern })
+    }))
     .repeated()
     .collect::<Vec<_>>()
     .then_ignore(end())
     .map(|items| Program { items })
 }
-
-#[allow(clippy::too_many_lines)]
 fn pratt_parser<'src, I>(
   atom: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
   + Clone
@@ -375,6 +291,16 @@ fn pratt_parser<'src, I>(
 where
   I: ValueInput<'src, Token = Token, Span = Span>,
 {
+  macro_rules! binary {
+    ($assoc:expr, $token:expr, $op:expr) => {
+      infix($assoc, just($token), |l, _, r, _| Expression::Binary {
+        left: Box::new(l),
+        operator: $op,
+        right: Box::new(r),
+      })
+    };
+  }
+
   atom.pratt((
     postfix(13, just(Token::PlusPlus), |lhs, _, _| {
       Expression::PostIncrement(Box::new(lhs))
@@ -404,104 +330,20 @@ where
       operand: Box::new(rhs),
       operator: UnaryOp::Positive,
     }),
-    infix(right(9), just(Token::Caret), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Power,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(8), just(Token::Star), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Multiply,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(8), just(Token::Slash), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Divide,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(8), just(Token::Percent), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Modulo,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(7), just(Token::Plus), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Add,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(7), just(Token::Minus), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Subtract,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::Less), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Less,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::LessEqual), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::LessEqual,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::EqualEqual), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Equal,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::BangEqual), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::NotEqual,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::GreaterEqual), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::GreaterEqual,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(5), just(Token::Greater), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Greater,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(4), just(Token::Tilde), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::Match,
-        right: Box::new(r),
-      }
-    }),
-    infix(left(4), just(Token::BangTilde), |l, _, r, _| {
-      Expression::Binary {
-        left: Box::new(l),
-        operator: BinaryOp::NotMatch,
-        right: Box::new(r),
-      }
-    }),
+    binary!(right(9), Token::Caret, BinaryOp::Power),
+    binary!(left(8), Token::Star, BinaryOp::Multiply),
+    binary!(left(8), Token::Slash, BinaryOp::Divide),
+    binary!(left(8), Token::Percent, BinaryOp::Modulo),
+    binary!(left(7), Token::Plus, BinaryOp::Add),
+    binary!(left(7), Token::Minus, BinaryOp::Subtract),
+    binary!(left(5), Token::Less, BinaryOp::Less),
+    binary!(left(5), Token::LessEqual, BinaryOp::LessEqual),
+    binary!(left(5), Token::EqualEqual, BinaryOp::Equal),
+    binary!(left(5), Token::BangEqual, BinaryOp::NotEqual),
+    binary!(left(5), Token::GreaterEqual, BinaryOp::GreaterEqual),
+    binary!(left(5), Token::Greater, BinaryOp::Greater),
+    binary!(left(4), Token::Tilde, BinaryOp::Match),
+    binary!(left(4), Token::BangTilde, BinaryOp::NotMatch),
     infix(left(3), just(Token::In), |l, _, r, _| Expression::Binary {
       left: Box::new(l),
       operator: BinaryOp::In,
@@ -523,7 +365,157 @@ where
     }),
   ))
 }
+fn statement_parser<'src, I>(
+  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  output_redirection: impl Parser<
+    'src,
+    I,
+    OutputRedirection,
+    extra::Err<ParseError<'src>>,
+  > + Clone
+  + 'src,
+  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
+  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  let print_item = just(Token::Print)
+    .ignore_then(expr_list.clone())
+    .then(output_redirection.clone().or_not())
+    .map(|(arguments, redirection)| BlockItem::Print {
+      arguments,
+      redirection,
+    });
 
+  let printf_item = just(Token::Printf)
+    .ignore_then(select! { Token::String(string) => string })
+    .then_ignore(just(Token::Comma))
+    .then(expr_list.clone())
+    .then(output_redirection.clone().or_not())
+    .map(|((format, arguments), redirection)| BlockItem::Printf {
+      arguments,
+      format,
+      redirection,
+    });
+
+  let for_classic = expr_list
+    .clone()
+    .or_not()
+    .then_ignore(just(Token::Semicolon))
+    .then(expr_list.clone().or_not())
+    .then_ignore(just(Token::Semicolon))
+    .then(expr_list.clone().or_not())
+    .map(|((initializer, condition), update)| (initializer, condition, update));
+
+  let for_simple = expr_list
+    .clone()
+    .map(|initializer| (Some(initializer), None, None));
+
+  let for_statement = just(Token::For)
+    .ignore_then(
+      choice((for_classic, for_simple, empty().to((None, None, None))))
+        .delimited_by(just(Token::LParen), just(Token::RParen)),
+    )
+    .then(block.clone())
+    .map(|((initializer, condition, update), body)| BlockItem::For {
+      body,
+      condition,
+      initializer,
+      update,
+    });
+
+  let do_while_statement = just(Token::Do)
+    .ignore_then(block.clone())
+    .then_ignore(just(Token::While))
+    .then(
+      expr
+        .clone()
+        .delimited_by(just(Token::LParen), just(Token::RParen)),
+    )
+    .map(|(body, condition)| BlockItem::DoWhile { body, condition });
+
+  let while_statement = just(Token::While)
+    .ignore_then(
+      expr
+        .clone()
+        .delimited_by(just(Token::LParen), just(Token::RParen)),
+    )
+    .then(block.clone())
+    .map(|(condition, body)| BlockItem::While { body, condition });
+
+  let controlflow_statement = choice((
+    just(Token::Break).to(BlockItem::Break),
+    just(Token::Continue).to(BlockItem::Continue),
+    just(Token::Next).to(BlockItem::Next),
+    just(Token::Return)
+      .ignore_then(expr.clone())
+      .map(BlockItem::Return),
+  ));
+
+  choice((
+    print_item,
+    printf_item,
+    for_statement,
+    do_while_statement,
+    while_statement,
+    if_statement_parser(expr.clone(), block.clone(), statement.clone()),
+    switch_statement_parser(expr.clone(), statement),
+    controlflow_statement,
+    just(Token::Delete)
+      .ignore_then(expr.clone())
+      .map(BlockItem::Delete),
+    expr.map(BlockItem::Expression),
+  ))
+  .then_ignore(just(Token::Semicolon).repeated())
+}
+fn switch_statement_parser<'src, I>(
+  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
+  + Clone
+  + 'src,
+) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+where
+  I: ValueInput<'src, Token = Token, Span = Span>,
+{
+  let switch_label = choice((
+    just(Token::Case)
+      .ignore_then(expr.clone())
+      .map(SwitchLabel::Case),
+    just(Token::Default).to(SwitchLabel::Default),
+  ));
+
+  let switch_case = switch_label
+    .then_ignore(just(Token::Colon))
+    .then(
+      statement
+        .clone()
+        .then_ignore(just(Token::Semicolon).repeated())
+        .repeated()
+        .collect::<Vec<_>>(),
+    )
+    .map(|(label, statements)| SwitchCase { label, statements });
+
+  just(Token::Switch)
+    .ignore_then(expr.delimited_by(just(Token::LParen), just(Token::RParen)))
+    .then(
+      switch_case
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+    )
+    .map(|(expression, cases)| BlockItem::Switch { cases, expression })
+}
 #[cfg(test)]
 mod tests {
   use super::*;
