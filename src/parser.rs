@@ -268,9 +268,16 @@ where
       })
     });
 
+  let expression_range = expr
+    .clone()
+    .then_ignore(just(Token::Comma))
+    .then(expr.clone())
+    .map(|(start, end)| Pattern::Range { end, start });
+
   let pattern = choice((
     just(Token::Begin).to(Pattern::Begin),
     just(Token::End).to(Pattern::End),
+    expression_range,
     expr.map(Pattern::Expression),
   ));
 
@@ -806,6 +813,26 @@ mod tests {
             operator: BinaryOp::Greater,
             right: Box::new(Expression::Number("0".to_string())),
           })),
+        })],
+      })
+      .run();
+  }
+
+  #[test]
+  fn parses_expression_range_as_pattern() {
+    Test::new()
+      .input("foo, bar { baz }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Identifier(
+              "baz".to_string(),
+            ))],
+          },
+          pattern: Some(Pattern::Range {
+            end: Expression::Identifier("bar".to_string()),
+            start: Expression::Identifier("foo".to_string()),
+          }),
         })],
       })
       .run();

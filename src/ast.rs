@@ -148,6 +148,7 @@ pub(crate) enum Pattern {
   Begin,
   End,
   Expression(Expression),
+  Range { end: Expression, start: Expression },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
