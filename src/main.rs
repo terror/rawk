@@ -15,6 +15,7 @@ use {
   std::{
     fmt::{self, Display, Formatter},
     fs,
+    ops::Range,
     path::{Path, PathBuf},
     process,
   },

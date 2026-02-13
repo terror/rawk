@@ -15,7 +15,7 @@ impl Arguments {
     report_message: &'a str,
     span: &Span,
     label_message: impl Display,
-  ) -> Report<'a, (&'a str, std::ops::Range<usize>)> {
+  ) -> Report<'a, (&'a str, Range<usize>)> {
     let range = span.start..span.end;
 
     Report::build(ReportKind::Error, (name, range.clone()))
