@@ -329,6 +329,10 @@ where
       operand: Box::new(rhs),
       operator: UnaryOp::Not,
     }),
+    prefix(10, just(Token::Tilde), |_, rhs, _| Expression::Unary {
+      operand: Box::new(rhs),
+      operator: UnaryOp::BitwiseNot,
+    }),
     prefix(10, just(Token::Minus), |_, rhs, _| Expression::Unary {
       operand: Box::new(rhs),
       operator: UnaryOp::Negate,
@@ -1329,14 +1333,20 @@ mod tests {
   #[test]
   fn parses_unary_operators() {
     Test::new()
-      .input("{ !a }")
+      .input("{ !a; ~b }")
       .expected(Program {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
-            items: vec![BlockItem::Expression(Expression::Unary {
-              operand: Box::new(Expression::Identifier("a".to_string())),
-              operator: UnaryOp::Not,
-            })],
+            items: vec![
+              BlockItem::Expression(Expression::Unary {
+                operand: Box::new(Expression::Identifier("a".to_string())),
+                operator: UnaryOp::Not,
+              }),
+              BlockItem::Expression(Expression::Unary {
+                operand: Box::new(Expression::Identifier("b".to_string())),
+                operator: UnaryOp::BitwiseNot,
+              }),
+            ],
           },
           pattern: None,
         })],

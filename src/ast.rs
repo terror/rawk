@@ -170,6 +170,7 @@ pub(crate) enum TopLevelItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum UnaryOp {
+  BitwiseNot,
   FieldAccess,
   Negate,
   Not,
