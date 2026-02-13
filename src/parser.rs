@@ -103,8 +103,7 @@ where
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
-  let number =
-    select! { Token::Number(number) => Expression::Number(number.lexeme) };
+  let number = select! { Token::Number(number) => Expression::Number(number) };
 
   let string = select! { Token::String(string) => Expression::String(string) };
 
@@ -735,12 +734,21 @@ mod tests {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Binary {
-              left: Box::new(Expression::Number("1".to_string())),
+              left: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })),
               operator: BinaryOp::Add,
               right: Box::new(Expression::Binary {
-                left: Box::new(Expression::Number("2".to_string())),
+                left: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "2".to_string(),
+                })),
                 operator: BinaryOp::Multiply,
-                right: Box::new(Expression::Number("3".to_string())),
+                right: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "3".to_string(),
+                })),
               }),
             })],
           },
@@ -758,7 +766,10 @@ mod tests {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Index {
-              indices: vec![Expression::Number("1".to_string())],
+              indices: vec![Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })],
               name: "a".to_string(),
             })],
           },
@@ -778,7 +789,10 @@ mod tests {
             items: vec![BlockItem::Expression(Expression::Assignment {
               operator: AssignOp::Assign,
               target: Box::new(Expression::Identifier("a".to_string())),
-              value: Box::new(Expression::Number("1".to_string())),
+              value: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })),
             })],
           },
           pattern: None,
@@ -800,7 +814,10 @@ mod tests {
               value: Box::new(Expression::Assignment {
                 operator: AssignOp::Assign,
                 target: Box::new(Expression::Identifier("b".to_string())),
-                value: Box::new(Expression::Number("1".to_string())),
+                value: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "1".to_string(),
+                })),
               }),
             })],
           },
@@ -839,16 +856,25 @@ mod tests {
             items: vec![BlockItem::Expression(Expression::Binary {
               left: Box::new(Expression::Binary {
                 left: Box::new(Expression::Unary {
-                  operand: Box::new(Expression::Number("1".to_string())),
+                  operand: Box::new(Expression::Number(NumberLiteral {
+                    kind: NumberKind::Decimal,
+                    lexeme: "1".to_string(),
+                  })),
                   operator: UnaryOp::FieldAccess,
                 }),
                 operator: BinaryOp::Greater,
-                right: Box::new(Expression::Number("0".to_string())),
+                right: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "0".to_string(),
+                })),
               }),
               operator: BinaryOp::And,
               right: Box::new(Expression::Binary {
                 left: Box::new(Expression::Unary {
-                  operand: Box::new(Expression::Number("2".to_string())),
+                  operand: Box::new(Expression::Number(NumberLiteral {
+                    kind: NumberKind::Decimal,
+                    lexeme: "2".to_string(),
+                  })),
                   operator: UnaryOp::FieldAccess,
                 }),
                 operator: BinaryOp::Match,
@@ -872,7 +898,10 @@ mod tests {
             items: vec![BlockItem::Expression(Expression::Assignment {
               operator: AssignOp::Add,
               target: Box::new(Expression::Identifier("a".to_string())),
-              value: Box::new(Expression::Number("1".to_string())),
+              value: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })),
             })],
           },
           pattern: None,
@@ -913,7 +942,10 @@ mod tests {
           action: Block {
             items: vec![
               BlockItem::Delete(Expression::Index {
-                indices: vec![Expression::Number("1".to_string())],
+                indices: vec![Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "1".to_string(),
+                })],
                 name: "a".to_string(),
               }),
               BlockItem::Return(Expression::Identifier("b".to_string())),
@@ -942,12 +974,21 @@ mod tests {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Binary {
-              left: Box::new(Expression::Number("2".to_string())),
+              left: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "2".to_string(),
+              })),
               operator: BinaryOp::Power,
               right: Box::new(Expression::Binary {
-                left: Box::new(Expression::Number("3".to_string())),
+                left: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "3".to_string(),
+                })),
                 operator: BinaryOp::Power,
-                right: Box::new(Expression::Number("4".to_string())),
+                right: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "4".to_string(),
+                })),
               }),
             })],
           },
@@ -970,11 +1011,17 @@ mod tests {
           },
           pattern: Some(Pattern::Expression(Expression::Binary {
             left: Box::new(Expression::Unary {
-              operand: Box::new(Expression::Number("1".to_string())),
+              operand: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })),
               operator: UnaryOp::FieldAccess,
             }),
             operator: BinaryOp::Greater,
-            right: Box::new(Expression::Number("0".to_string())),
+            right: Box::new(Expression::Number(NumberLiteral {
+              kind: NumberKind::Decimal,
+              lexeme: "0".to_string(),
+            })),
           })),
         })],
       })
@@ -1009,7 +1056,10 @@ mod tests {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Unary {
-              operand: Box::new(Expression::Number("1".to_string())),
+              operand: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "1".to_string(),
+              })),
               operator: UnaryOp::FieldAccess,
             })],
           },
@@ -1028,8 +1078,14 @@ mod tests {
           action: Block {
             items: vec![BlockItem::Expression(Expression::FunctionCall {
               arguments: vec![
-                Expression::Number("1".to_string()),
-                Expression::Number("2".to_string()),
+                Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "1".to_string(),
+                }),
+                Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "2".to_string(),
+                }),
               ],
               name: "foo".to_string(),
             })],
@@ -1091,7 +1147,7 @@ mod tests {
                 command: None,
                 input: None,
                 target: Some(Box::new(Expression::Index {
-                  indices: vec![Expression::Number("1".to_string())],
+                  indices: vec![Expression::Number(NumberLiteral { kind: NumberKind::Decimal, lexeme: "1".to_string() })],
                   name: "foo".to_string(),
                 })),
               }),
@@ -1117,12 +1173,21 @@ mod tests {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Binary {
               left: Box::new(Expression::Binary {
-                left: Box::new(Expression::Number("1".to_string())),
+                left: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "1".to_string(),
+                })),
                 operator: BinaryOp::Add,
-                right: Box::new(Expression::Number("2".to_string())),
+                right: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "2".to_string(),
+                })),
               }),
               operator: BinaryOp::Multiply,
-              right: Box::new(Expression::Number("3".to_string())),
+              right: Box::new(Expression::Number(NumberLiteral {
+                kind: NumberKind::Decimal,
+                lexeme: "3".to_string(),
+              })),
             })],
           },
           pattern: None,
@@ -1252,12 +1317,18 @@ mod tests {
                 condition: Some(vec![Expression::Binary {
                   left: Box::new(Expression::Identifier("i".to_string())),
                   operator: BinaryOp::Less,
-                  right: Box::new(Expression::Number("3".to_string())),
+                  right: Box::new(Expression::Number(NumberLiteral {
+                    kind: NumberKind::Decimal,
+                    lexeme: "3".to_string(),
+                  })),
                 }]),
                 initializer: Some(vec![Expression::Assignment {
                   operator: AssignOp::Assign,
                   target: Box::new(Expression::Identifier("i".to_string())),
-                  value: Box::new(Expression::Number("0".to_string())),
+                  value: Box::new(Expression::Number(NumberLiteral {
+                    kind: NumberKind::Decimal,
+                    lexeme: "0".to_string(),
+                  })),
                 }]),
                 update: Some(vec![Expression::PostIncrement(Box::new(
                   Expression::Identifier("i".to_string()),
@@ -1347,7 +1418,10 @@ mod tests {
           action: Block {
             items: vec![BlockItem::Expression(Expression::Unary {
               operand: Box::new(Expression::Unary {
-                operand: Box::new(Expression::Number("1".to_string())),
+                operand: Box::new(Expression::Number(NumberLiteral {
+                  kind: NumberKind::Decimal,
+                  lexeme: "1".to_string(),
+                })),
                 operator: UnaryOp::FieldAccess,
               }),
               operator: UnaryOp::FieldAccess,
@@ -1486,7 +1560,10 @@ mod tests {
             items: vec![BlockItem::Switch {
               cases: vec![
                 SwitchCase {
-                  label: SwitchLabel::Case(Expression::Number("1".to_string())),
+                  label: SwitchLabel::Case(Expression::Number(NumberLiteral {
+                    kind: NumberKind::Decimal,
+                    lexeme: "1".to_string(),
+                  })),
                   statements: vec![
                     BlockItem::Print {
                       arguments: vec![Expression::Identifier("b".to_string())],

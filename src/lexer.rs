@@ -67,6 +67,14 @@ fn number_parser<'src>()
     .then(one_of("0123456789abcdefABCDEF").repeated().at_least(1))
     .to_slice();
 
+  let octal = choice((just("0o"), just("0O")))
+    .then(one_of("01234567").repeated().at_least(1))
+    .to_slice();
+
+  let binary = choice((just("0b"), just("0B")))
+    .then(one_of("01").repeated().at_least(1))
+    .to_slice();
+
   let float_with_leading_digits = digits
     .then(just('.'))
     .then(one_of("0123456789").repeated())
@@ -82,6 +90,14 @@ fn number_parser<'src>()
   choice((
     hexadecimal.map(|lexeme: &str| NumberLiteral {
       kind: NumberKind::Hexadecimal,
+      lexeme: lexeme.to_string(),
+    }),
+    octal.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Octal,
+      lexeme: lexeme.to_string(),
+    }),
+    binary.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Binary,
       lexeme: lexeme.to_string(),
     }),
     float_with_leading_digits.map(|lexeme: &str| NumberLiteral {
@@ -333,7 +349,7 @@ mod tests {
 
     Test::new()
       .input(
-        "123 1.5 .5 1. 1e3 1E-2 0x10 0X1F 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
+        "123 1.5 .5 1. 1e3 1E-2 0x10 0X1F 0o10 0O17 0b10 0B11 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
       )
       .expected([
         (number(NumberKind::Decimal, "123"), 0..3),
@@ -344,46 +360,50 @@ mod tests {
         (number(NumberKind::Scientific, "1E-2"), 18..22),
         (number(NumberKind::Hexadecimal, "0x10"), 23..27),
         (number(NumberKind::Hexadecimal, "0X1F"), 28..32),
-        (Token::String("foo".to_string()), 33..38),
-        (Token::String("bar".to_string()), 39..44),
-        (Token::Plus, 45..46),
-        (Token::Minus, 47..48),
-        (Token::Star, 49..50),
-        (Token::Slash, 51..52),
-        (Token::Percent, 53..54),
-        (Token::Caret, 55..56),
-        (Token::Assign, 57..58),
-        (Token::PlusAssign, 59..61),
-        (Token::MinusAssign, 62..64),
-        (Token::StarAssign, 65..67),
-        (Token::SlashAssign, 68..70),
-        (Token::PercentAssign, 71..73),
-        (Token::CaretAssign, 74..76),
-        (Token::Question, 77..78),
-        (Token::Colon, 79..80),
-        (Token::OrOr, 81..83),
-        (Token::AndAnd, 84..86),
-        (Token::Tilde, 87..88),
-        (Token::BangTilde, 89..91),
-        (Token::Less, 92..93),
-        (Token::LessEqual, 94..96),
-        (Token::EqualEqual, 97..99),
-        (Token::BangEqual, 100..102),
-        (Token::Greater, 103..104),
-        (Token::GreaterEqual, 105..107),
-        (Token::PlusPlus, 108..110),
-        (Token::MinusMinus, 111..113),
-        (Token::Dollar, 114..115),
-        (Token::LBracket, 116..117),
-        (Token::RBracket, 118..119),
-        (Token::GreaterGreater, 120..122),
-        (Token::Pipe, 123..124),
-        (Token::LBrace, 125..126),
-        (Token::RBrace, 127..128),
-        (Token::LParen, 129..130),
-        (Token::RParen, 131..132),
-        (Token::Comma, 133..134),
-        (Token::Semicolon, 135..136),
+        (number(NumberKind::Octal, "0o10"), 33..37),
+        (number(NumberKind::Octal, "0O17"), 38..42),
+        (number(NumberKind::Binary, "0b10"), 43..47),
+        (number(NumberKind::Binary, "0B11"), 48..52),
+        (Token::String("foo".to_string()), 53..58),
+        (Token::String("bar".to_string()), 59..64),
+        (Token::Plus, 65..66),
+        (Token::Minus, 67..68),
+        (Token::Star, 69..70),
+        (Token::Slash, 71..72),
+        (Token::Percent, 73..74),
+        (Token::Caret, 75..76),
+        (Token::Assign, 77..78),
+        (Token::PlusAssign, 79..81),
+        (Token::MinusAssign, 82..84),
+        (Token::StarAssign, 85..87),
+        (Token::SlashAssign, 88..90),
+        (Token::PercentAssign, 91..93),
+        (Token::CaretAssign, 94..96),
+        (Token::Question, 97..98),
+        (Token::Colon, 99..100),
+        (Token::OrOr, 101..103),
+        (Token::AndAnd, 104..106),
+        (Token::Tilde, 107..108),
+        (Token::BangTilde, 109..111),
+        (Token::Less, 112..113),
+        (Token::LessEqual, 114..116),
+        (Token::EqualEqual, 117..119),
+        (Token::BangEqual, 120..122),
+        (Token::Greater, 123..124),
+        (Token::GreaterEqual, 125..127),
+        (Token::PlusPlus, 128..130),
+        (Token::MinusMinus, 131..133),
+        (Token::Dollar, 134..135),
+        (Token::LBracket, 136..137),
+        (Token::RBracket, 138..139),
+        (Token::GreaterGreater, 140..142),
+        (Token::Pipe, 143..144),
+        (Token::LBrace, 145..146),
+        (Token::RBrace, 147..148),
+        (Token::LParen, 149..150),
+        (Token::RParen, 151..152),
+        (Token::Comma, 153..154),
+        (Token::Semicolon, 155..156),
       ])
       .run();
   }
