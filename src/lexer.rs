@@ -70,9 +70,49 @@ fn token_parser<'src>()
     .then_ignore(just('"'))
     .map(|s: &str| Token::String(s.to_string()));
 
+  let multi_char_operators = choice((
+    just("+=").to(Token::PlusAssign),
+    just("-=").to(Token::MinusAssign),
+    just("*=").to(Token::StarAssign),
+    just("/=").to(Token::SlashAssign),
+    just("%=").to(Token::PercentAssign),
+    just("^=").to(Token::CaretAssign),
+    just("||").to(Token::OrOr),
+    just("&&").to(Token::AndAnd),
+    just("!~").to(Token::BangTilde),
+    just("<=").to(Token::LessEqual),
+    just("==").to(Token::EqualEqual),
+    just("!=").to(Token::BangEqual),
+    just(">=").to(Token::GreaterEqual),
+    just("++").to(Token::PlusPlus),
+    just("--").to(Token::MinusMinus),
+    just(">>").to(Token::GreaterGreater),
+  ));
+
+  let single_char_operators = choice((
+    just('+').to(Token::Plus),
+    just('-').to(Token::Minus),
+    just('*').to(Token::Star),
+    just('/').to(Token::Slash),
+    just('%').to(Token::Percent),
+    just('^').to(Token::Caret),
+    just('=').to(Token::Assign),
+    just('?').to(Token::Question),
+    just(':').to(Token::Colon),
+    just('~').to(Token::Tilde),
+    just('<').to(Token::Less),
+    just('>').to(Token::Greater),
+    just('$').to(Token::Dollar),
+    just('|').to(Token::Pipe),
+  ));
+
+  let operators = choice((multi_char_operators, single_char_operators));
+
   let punctuation = choice((
     just('{').to(Token::LBrace),
     just('}').to(Token::RBrace),
+    just('[').to(Token::LBracket),
+    just(']').to(Token::RBracket),
     just('(').to(Token::LParen),
     just(')').to(Token::RParen),
     just(',').to(Token::Comma),
@@ -84,6 +124,7 @@ fn token_parser<'src>()
     integer,
     single_quoted,
     double_quoted,
+    operators,
     punctuation,
   ))
 }
@@ -169,19 +210,53 @@ mod tests {
   }
 
   #[test]
-  fn integers_strings_and_punctuation() {
+  fn integers_strings_operators_and_punctuation() {
     Test::new()
-      .input("123 'foo' \"bar\" { } ( ) , ;")
+      .input(
+        "123 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
+      )
       .expected([
         (Token::Integer("123".to_string()), 0..3),
         (Token::String("foo".to_string()), 4..9),
         (Token::String("bar".to_string()), 10..15),
-        (Token::LBrace, 16..17),
-        (Token::RBrace, 18..19),
-        (Token::LParen, 20..21),
-        (Token::RParen, 22..23),
-        (Token::Comma, 24..25),
-        (Token::Semicolon, 26..27),
+        (Token::Plus, 16..17),
+        (Token::Minus, 18..19),
+        (Token::Star, 20..21),
+        (Token::Slash, 22..23),
+        (Token::Percent, 24..25),
+        (Token::Caret, 26..27),
+        (Token::Assign, 28..29),
+        (Token::PlusAssign, 30..32),
+        (Token::MinusAssign, 33..35),
+        (Token::StarAssign, 36..38),
+        (Token::SlashAssign, 39..41),
+        (Token::PercentAssign, 42..44),
+        (Token::CaretAssign, 45..47),
+        (Token::Question, 48..49),
+        (Token::Colon, 50..51),
+        (Token::OrOr, 52..54),
+        (Token::AndAnd, 55..57),
+        (Token::Tilde, 58..59),
+        (Token::BangTilde, 60..62),
+        (Token::Less, 63..64),
+        (Token::LessEqual, 65..67),
+        (Token::EqualEqual, 68..70),
+        (Token::BangEqual, 71..73),
+        (Token::Greater, 74..75),
+        (Token::GreaterEqual, 76..78),
+        (Token::PlusPlus, 79..81),
+        (Token::MinusMinus, 82..84),
+        (Token::Dollar, 85..86),
+        (Token::LBracket, 87..88),
+        (Token::RBracket, 89..90),
+        (Token::GreaterGreater, 91..93),
+        (Token::Pipe, 94..95),
+        (Token::LBrace, 96..97),
+        (Token::RBrace, 98..99),
+        (Token::LParen, 100..101),
+        (Token::RParen, 102..103),
+        (Token::Comma, 104..105),
+        (Token::Semicolon, 106..107),
       ])
       .run();
   }
@@ -200,7 +275,7 @@ mod tests {
     assert_eq!(
       actual,
       vec![
-        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, non-zero digit, '0', ''', '\"', '{', '}', '(', ')', ',', ';', or end of input".to_string(),
+        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, non-zero digit, '0', ''', '\"', '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', or end of input".to_string(),
       ],
     );
   }
