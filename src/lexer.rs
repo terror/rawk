@@ -159,6 +159,19 @@ fn punctuation_parser<'src>()
   ))
 }
 
+fn regex_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
+  just('/')
+    .ignore_then(
+      any()
+        .filter(|c| !matches!(c, '/' | '=' | '\n' | '\r' | ' ' | '\t'))
+        .then(any().filter(|c| !matches!(c, '/' | '\n' | '\r')).repeated())
+        .to_slice(),
+    )
+    .then_ignore(just('/'))
+    .map(|regex: &str| Token::Regex(regex.to_string()))
+}
+
 fn string_parser<'src>()
 -> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
   let single_quoted = just('\'')
@@ -179,6 +192,7 @@ fn token_parser<'src>()
   choice((
     identifier_parser(),
     number_parser(),
+    regex_parser(),
     operator_parser(),
     punctuation_parser(),
     string_parser(),
@@ -279,7 +293,7 @@ mod tests {
     assert_eq!(
       actual,
       vec![
-        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', ''', '\"', or end of input".to_string(),
+        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, '/', '+', '-', '*', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', ''', '\"', or end of input".to_string(),
       ],
     );
   }
@@ -369,6 +383,29 @@ mod tests {
         (Token::RParen, 131..132),
         (Token::Comma, 133..134),
         (Token::Semicolon, 135..136),
+      ])
+      .run();
+  }
+
+  #[test]
+  fn regex_literals() {
+    Test::new()
+      .input("/foo/ /bar123/ /foo bar/")
+      .expected([
+        (Token::Regex("foo".to_string()), 0..5),
+        (Token::Regex("bar123".to_string()), 6..14),
+        (Token::Regex("foo bar".to_string()), 15..24),
+      ])
+      .run();
+  }
+
+  #[test]
+  fn slash_assign_is_not_lexed_as_regex() {
+    Test::new()
+      .input("/= /foo/")
+      .expected([
+        (Token::SlashAssign, 0..2),
+        (Token::Regex("foo".to_string()), 3..8),
       ])
       .run();
   }
