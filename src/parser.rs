@@ -127,14 +127,35 @@ pub(crate) fn parse(
   )
 }
 
+#[allow(clippy::too_many_lines)]
 fn parser<'src, I>()
 -> impl Parser<'src, I, Program, extra::Err<ParseError<'src>>>
 where
   I: ValueInput<'src, Token = Token, Span = Span>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
+  let string = select! { Token::String(string) => string };
 
   let expr = expression_parser();
+
+  let expr_list = expr
+    .clone()
+    .separated_by(just(Token::Comma))
+    .allow_trailing()
+    .at_least(1)
+    .collect::<Vec<_>>();
+
+  let output_redirection = choice((
+    just(Token::GreaterGreater)
+      .ignore_then(string)
+      .map(OutputRedirection::Append),
+    just(Token::Greater)
+      .ignore_then(string)
+      .map(OutputRedirection::Write),
+    just(Token::Pipe)
+      .ignore_then(string)
+      .map(OutputRedirection::Pipe),
+  ));
 
   let pattern = choice((
     just(Token::Begin).to(Pattern::Begin),
@@ -142,13 +163,163 @@ where
     expr.clone().map(Pattern::Expression),
   ));
 
-  let block_item_expr = expr.map(BlockItem::Expression);
-
   let block = recursive(|block| {
-    let item = block
-      .clone()
-      .map(BlockItem::Block)
-      .or(block_item_expr.clone());
+    let statement = recursive(|statement| {
+      let expression_statement = expr.clone().map(BlockItem::Expression);
+
+      let print_item = just(Token::Print)
+        .ignore_then(expr_list.clone())
+        .then(output_redirection.clone().or_not())
+        .map(|(arguments, redirection)| BlockItem::Print {
+          arguments,
+          redirection,
+        });
+
+      let printf_item = just(Token::Printf)
+        .ignore_then(string)
+        .then_ignore(just(Token::Comma))
+        .then(expr_list.clone())
+        .then(output_redirection.clone().or_not())
+        .map(|((format, arguments), redirection)| BlockItem::Printf {
+          arguments,
+          format,
+          redirection,
+        });
+
+      let for_classic = expr_list
+        .clone()
+        .or_not()
+        .then_ignore(just(Token::Semicolon))
+        .then(expr_list.clone().or_not())
+        .then_ignore(just(Token::Semicolon))
+        .then(expr_list.clone().or_not())
+        .map(|((initializer, condition), update)| {
+          (initializer, condition, update)
+        });
+
+      let for_simple = expr_list
+        .clone()
+        .map(|initializer| (Some(initializer), None, None));
+
+      let for_statement = just(Token::For)
+        .ignore_then(
+          choice((for_classic, for_simple, empty().to((None, None, None))))
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .then(block.clone())
+        .map(|((initializer, condition, update), body)| BlockItem::For {
+          body,
+          condition,
+          initializer,
+          update,
+        });
+
+      let do_while_statement = just(Token::Do)
+        .ignore_then(block.clone())
+        .then_ignore(just(Token::While))
+        .then(
+          expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .map(|(body, condition)| BlockItem::DoWhile { body, condition });
+
+      let while_statement = just(Token::While)
+        .ignore_then(
+          expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .then(block.clone())
+        .map(|(condition, body)| BlockItem::While { body, condition });
+
+      let if_statement = just(Token::If)
+        .ignore_then(
+          expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .then(block.clone())
+        .then(
+          just(Token::Else)
+            .ignore_then(block.clone().or(statement.clone().try_map(
+              |statement, span| match statement {
+                if_statement @ BlockItem::If { .. } => Ok(Block {
+                  items: vec![if_statement],
+                }),
+                _ => Err(Rich::custom(span, "expected if statement")),
+              },
+            )))
+            .or_not(),
+        )
+        .map(|((condition, then_branch), else_branch)| BlockItem::If {
+          condition,
+          else_branch,
+          then_branch,
+        });
+
+      let switch_label = choice((
+        just(Token::Case)
+          .ignore_then(expr.clone())
+          .map(SwitchLabel::Case),
+        just(Token::Default).to(SwitchLabel::Default),
+      ));
+
+      let switch_case = switch_label
+        .then_ignore(just(Token::Colon))
+        .then(
+          statement
+            .clone()
+            .then_ignore(just(Token::Semicolon).repeated())
+            .repeated()
+            .collect::<Vec<_>>(),
+        )
+        .map(|(label, statements)| SwitchCase { label, statements });
+
+      let switch_statement = just(Token::Switch)
+        .ignore_then(
+          expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        )
+        .then(
+          switch_case
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+        )
+        .map(|(expression, cases)| BlockItem::Switch { cases, expression });
+
+      let controlflow_statement = choice((
+        just(Token::Break).to(BlockItem::Break),
+        just(Token::Continue).to(BlockItem::Continue),
+        just(Token::Next).to(BlockItem::Next),
+        just(Token::Return)
+          .ignore_then(expr.clone())
+          .map(BlockItem::Return),
+      ));
+
+      let memory_statement = just(Token::Delete)
+        .ignore_then(expr.clone())
+        .map(BlockItem::Delete);
+
+      choice((
+        print_item,
+        printf_item,
+        for_statement,
+        do_while_statement,
+        while_statement,
+        if_statement,
+        switch_statement,
+        controlflow_statement,
+        memory_statement,
+        expression_statement,
+      ))
+      .then_ignore(just(Token::Semicolon).repeated())
+    });
+
+    let item = block.clone().map(BlockItem::Block).or(statement);
 
     item
       .repeated()
@@ -571,6 +742,28 @@ mod tests {
   }
 
   #[test]
+  fn parses_controlflow_and_memory_statements() {
+    Test::new()
+      .input("{ delete a[1]; return b; continue }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![
+              BlockItem::Delete(Expression::Index {
+                indices: vec![Expression::Number("1".to_string())],
+                name: "a".to_string(),
+              }),
+              BlockItem::Return(Expression::Identifier("b".to_string())),
+              BlockItem::Continue,
+            ],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
   fn parses_empty_program() {
     Test::new()
       .input("")
@@ -717,6 +910,33 @@ mod tests {
   }
 
   #[test]
+  fn parses_if_else_statement() {
+    Test::new()
+      .input("{ if (a) { b } else { c } }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::If {
+              condition: Expression::Identifier("a".to_string()),
+              else_branch: Some(Block {
+                items: vec![BlockItem::Expression(Expression::Identifier(
+                  "c".to_string(),
+                ))],
+              }),
+              then_branch: Block {
+                items: vec![BlockItem::Expression(Expression::Identifier(
+                  "b".to_string(),
+                ))],
+              },
+            }],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
   fn parses_in_operator() {
     Test::new()
       .input("{ a in b }")
@@ -768,6 +988,60 @@ mod tests {
                 right: Box::new(Expression::Identifier("c".to_string())),
               }),
             })],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
+  fn parses_loop_statements() {
+    Test::new()
+      .input(
+        "{ while (a) { b } do { c } while (d) for (i = 0; i < 3; i++) { e } }",
+      )
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![
+              BlockItem::While {
+                body: Block {
+                  items: vec![BlockItem::Expression(Expression::Identifier(
+                    "b".to_string(),
+                  ))],
+                },
+                condition: Expression::Identifier("a".to_string()),
+              },
+              BlockItem::DoWhile {
+                body: Block {
+                  items: vec![BlockItem::Expression(Expression::Identifier(
+                    "c".to_string(),
+                  ))],
+                },
+                condition: Expression::Identifier("d".to_string()),
+              },
+              BlockItem::For {
+                body: Block {
+                  items: vec![BlockItem::Expression(Expression::Identifier(
+                    "e".to_string(),
+                  ))],
+                },
+                condition: Some(vec![Expression::Binary {
+                  left: Box::new(Expression::Identifier("i".to_string())),
+                  operator: BinaryOp::Less,
+                  right: Box::new(Expression::Number("3".to_string())),
+                }]),
+                initializer: Some(vec![Expression::Assignment {
+                  operator: AssignOp::Assign,
+                  target: Box::new(Expression::Identifier("i".to_string())),
+                  value: Box::new(Expression::Number("0".to_string())),
+                }]),
+                update: Some(vec![Expression::PostIncrement(Box::new(
+                  Expression::Identifier("i".to_string()),
+                ))]),
+              },
+            ],
           },
           pattern: None,
         })],
@@ -936,6 +1210,34 @@ mod tests {
   }
 
   #[test]
+  fn parses_print_and_printf_statements() {
+    Test::new()
+      .input("{ print a, b >> \"foo\"; printf \"%s\", a >> \"bar\" }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![
+              BlockItem::Print {
+                arguments: vec![
+                  Expression::Identifier("a".to_string()),
+                  Expression::Identifier("b".to_string()),
+                ],
+                redirection: Some(OutputRedirection::Append("foo".to_string())),
+              },
+              BlockItem::Printf {
+                arguments: vec![Expression::Identifier("a".to_string())],
+                format: "%s".to_string(),
+                redirection: Some(OutputRedirection::Append("bar".to_string())),
+              },
+            ],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
   fn parses_string_expression() {
     Test::new()
       .input("{ \"hello\" }")
@@ -945,6 +1247,39 @@ mod tests {
             items: vec![BlockItem::Expression(Expression::String(
               "hello".to_string(),
             ))],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
+  fn parses_switch_statement() {
+    Test::new()
+      .input("{ switch (a) { case 1: print b; break; default: next } }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Switch {
+              cases: vec![
+                SwitchCase {
+                  label: SwitchLabel::Case(Expression::Number("1".to_string())),
+                  statements: vec![
+                    BlockItem::Print {
+                      arguments: vec![Expression::Identifier("b".to_string())],
+                      redirection: None,
+                    },
+                    BlockItem::Break,
+                  ],
+                },
+                SwitchCase {
+                  label: SwitchLabel::Default,
+                  statements: vec![BlockItem::Next],
+                },
+              ],
+              expression: Expression::Identifier("a".to_string()),
+            }],
           },
           pattern: None,
         })],

@@ -4,7 +4,8 @@ use {
   ariadne::{Color, Label, Report, ReportKind, Source},
   ast::{
     AssignOp, BinaryOp, Block, BlockItem, Expression, FunctionDefinition,
-    Pattern, PatternAction, Program, TopLevelItem, UnaryOp,
+    OutputRedirection, Pattern, PatternAction, Program, SwitchCase,
+    SwitchLabel, TopLevelItem, UnaryOp,
   },
   chumsky::{
     input::{Stream, ValueInput},
