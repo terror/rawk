@@ -80,13 +80,28 @@ fn number_parser<'src>()
   let integer = text::int(10);
 
   choice((
-    hexadecimal,
-    float_with_leading_digits,
-    float_without_leading_digits,
-    scientific,
-    integer,
+    hexadecimal.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Hexadecimal,
+      lexeme: lexeme.to_string(),
+    }),
+    float_with_leading_digits.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Float,
+      lexeme: lexeme.to_string(),
+    }),
+    float_without_leading_digits.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Float,
+      lexeme: lexeme.to_string(),
+    }),
+    scientific.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Scientific,
+      lexeme: lexeme.to_string(),
+    }),
+    integer.map(|lexeme: &str| NumberLiteral {
+      kind: NumberKind::Decimal,
+      lexeme: lexeme.to_string(),
+    }),
   ))
-  .map(|number: &str| Token::Integer(number.to_string()))
+  .map(Token::Number)
 }
 
 fn operator_parser<'src>()
@@ -279,7 +294,13 @@ mod tests {
         (Token::Identifier("bar".to_string()), 4..7),
         (Token::RBrace, 7..8),
         (Token::LParen, 8..9),
-        (Token::Integer("1".to_string()), 9..10),
+        (
+          Token::Number(NumberLiteral {
+            kind: NumberKind::Decimal,
+            lexeme: "1".to_string(),
+          }),
+          9..10,
+        ),
         (Token::RParen, 10..11),
         (Token::Semicolon, 11..12),
       ])
@@ -288,19 +309,26 @@ mod tests {
 
   #[test]
   fn numbers_strings_operators_and_punctuation() {
+    fn number(kind: NumberKind, lexeme: &str) -> Token {
+      Token::Number(NumberLiteral {
+        kind,
+        lexeme: lexeme.to_string(),
+      })
+    }
+
     Test::new()
       .input(
         "123 1.5 .5 1. 1e3 1E-2 0x10 0X1F 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
       )
       .expected([
-        (Token::Integer("123".to_string()), 0..3),
-        (Token::Integer("1.5".to_string()), 4..7),
-        (Token::Integer(".5".to_string()), 8..10),
-        (Token::Integer("1.".to_string()), 11..13),
-        (Token::Integer("1e3".to_string()), 14..17),
-        (Token::Integer("1E-2".to_string()), 18..22),
-        (Token::Integer("0x10".to_string()), 23..27),
-        (Token::Integer("0X1F".to_string()), 28..32),
+        (number(NumberKind::Decimal, "123"), 0..3),
+        (number(NumberKind::Float, "1.5"), 4..7),
+        (number(NumberKind::Float, ".5"), 8..10),
+        (number(NumberKind::Float, "1."), 11..13),
+        (number(NumberKind::Scientific, "1e3"), 14..17),
+        (number(NumberKind::Scientific, "1E-2"), 18..22),
+        (number(NumberKind::Hexadecimal, "0x10"), 23..27),
+        (number(NumberKind::Hexadecimal, "0X1F"), 28..32),
         (Token::String("foo".to_string()), 33..38),
         (Token::String("bar".to_string()), 39..44),
         (Token::Plus, 45..46),
@@ -359,7 +387,13 @@ mod tests {
       .input("foo # bar\n  # baz\n123\t# qux\n\"bar\" # bob")
       .expected([
         (Token::Identifier("foo".to_string()), 0..3),
-        (Token::Integer("123".to_string()), 18..21),
+        (
+          Token::Number(NumberLiteral {
+            kind: NumberKind::Decimal,
+            lexeme: "123".to_string(),
+          }),
+          18..21,
+        ),
         (Token::String("bar".to_string()), 28..33),
       ])
       .run();

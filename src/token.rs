@@ -1,6 +1,20 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum NumberKind {
+  Decimal,
+  Float,
+  Hexadecimal,
+  Scientific,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct NumberLiteral {
+  pub(crate) kind: NumberKind,
+  pub(crate) lexeme: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Token {
   AndAnd,
   Assign,
@@ -30,7 +44,6 @@ pub(crate) enum Token {
   Identifier(String),
   If,
   In,
-  Integer(String),
   LBrace,
   LBracket,
   LParen,
@@ -40,6 +53,7 @@ pub(crate) enum Token {
   MinusAssign,
   MinusMinus,
   Next,
+  Number(NumberLiteral),
   OrOr,
   Percent,
   PercentAssign,
@@ -96,7 +110,7 @@ impl Display for Token {
       Self::Identifier(identifier) => write!(f, "{identifier}"),
       Self::If => write!(f, "if"),
       Self::In => write!(f, "in"),
-      Self::Integer(integer) => write!(f, "{integer}"),
+      Self::Number(number) => write!(f, "{}", number.lexeme),
       Self::LBrace => write!(f, "{{"),
       Self::LBracket => write!(f, "["),
       Self::LParen => write!(f, "("),
