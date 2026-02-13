@@ -138,6 +138,7 @@ fn operator_parser<'src>()
     just('~').to(Token::Tilde),
     just('<').to(Token::Less),
     just('>').to(Token::Greater),
+    just('!').to(Token::Bang),
     just('$').to(Token::Dollar),
     just('|').to(Token::Pipe),
   ));
