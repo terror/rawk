@@ -34,9 +34,12 @@ where
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
+  let regex = select! { Token::Regex(regex) => regex };
+
   let pattern = choice((
     just(Token::Begin).to(Pattern::Begin),
     just(Token::End).to(Pattern::End),
+    regex.to(Pattern::ExpressionStub),
     identifier.to(Pattern::ExpressionStub),
   ));
 
@@ -217,7 +220,7 @@ mod tests {
   #[test]
   fn parses_pattern_actions() {
     Test::new()
-      .input("BEGIN { foo } END { bar } baz { qux } { bob }")
+      .input("BEGIN { foo } END { bar } baz { qux } /foo/ { bob } { bar }")
       .expected(Program {
         items: vec![
           TopLevelItem::PatternAction(PatternAction {
@@ -231,6 +234,12 @@ mod tests {
               items: vec![BlockItem::TokenStub],
             },
             pattern: Some(Pattern::End),
+          }),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::TokenStub],
+            },
+            pattern: Some(Pattern::ExpressionStub),
           }),
           TopLevelItem::PatternAction(PatternAction {
             action: Block {
