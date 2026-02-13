@@ -2,9 +2,11 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum NumberKind {
+  Binary,
   Decimal,
   Float,
   Hexadecimal,
+  Octal,
   Scientific,
 }
 

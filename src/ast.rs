@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AssignOp {
   Add,
@@ -124,7 +126,7 @@ pub(crate) enum Expression {
     indices: Vec<Expression>,
     name: String,
   },
-  Number(String),
+  Number(NumberLiteral),
   PostDecrement(Box<Expression>),
   PostIncrement(Box<Expression>),
   PreDecrement(Box<Expression>),
