@@ -389,38 +389,6 @@ mod tests {
     }
   }
 
-  fn assign(
-    target: Expression,
-    operator: AssignOp,
-    value: Expression,
-  ) -> Expression {
-    Expression::Assignment {
-      operator,
-      target: Box::new(target),
-      value: Box::new(value),
-    }
-  }
-
-  fn binop(
-    left: Expression,
-    operator: BinaryOp,
-    right: Expression,
-  ) -> Expression {
-    Expression::Binary {
-      left: Box::new(left),
-      operator,
-      right: Box::new(right),
-    }
-  }
-
-  fn expr_item(expr: Expression) -> BlockItem {
-    BlockItem::Expression(expr)
-  }
-
-  fn ident(s: &str) -> Expression {
-    Expression::Identifier(s.to_string())
-  }
-
   #[test]
   fn invalid_input_reports_errors() {
     let (tokens, lex_errors) = lexer::lex("function foo(bar { baz }");
@@ -448,23 +416,25 @@ mod tests {
     assert_eq!(errors.len(), 0);
   }
 
-  fn num(s: &str) -> Expression {
-    Expression::Number(s.to_string())
-  }
-
   #[test]
   fn parses_arithmetic_expressions() {
     Test::new()
       .input("{ 1 + 2 * 3 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            num("1"),
-            BinaryOp::Add,
-            binop(num("2"), BinaryOp::Multiply, num("3")),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Number("1".to_string())),
+              operator: BinaryOp::Add,
+              right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number("2".to_string())),
+                operator: BinaryOp::Multiply,
+                right: Box::new(Expression::Number("3".to_string())),
+              }),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -474,13 +444,15 @@ mod tests {
     Test::new()
       .input("{ a[1] }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::Index {
-            indices: vec![num("1")],
-            name: "a".to_string(),
-          })],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Index {
+              indices: vec![Expression::Number("1".to_string())],
+              name: "a".to_string(),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -490,10 +462,16 @@ mod tests {
     Test::new()
       .input("{ a = 1 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(assign(ident("a"), AssignOp::Assign, num("1")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Assignment {
+              operator: AssignOp::Assign,
+              target: Box::new(Expression::Identifier("a".to_string())),
+              value: Box::new(Expression::Number("1".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -503,14 +481,20 @@ mod tests {
     Test::new()
       .input("{ a = b = 1 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(assign(
-            ident("a"),
-            AssignOp::Assign,
-            assign(ident("b"), AssignOp::Assign, num("1")),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Assignment {
+              operator: AssignOp::Assign,
+              target: Box::new(Expression::Identifier("a".to_string())),
+              value: Box::new(Expression::Assignment {
+                operator: AssignOp::Assign,
+                target: Box::new(Expression::Identifier("b".to_string())),
+                value: Box::new(Expression::Number("1".to_string())),
+              }),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -520,10 +504,16 @@ mod tests {
     Test::new()
       .input("{ a < b }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(ident("a"), BinaryOp::Less, ident("b")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Identifier("a".to_string())),
+              operator: BinaryOp::Less,
+              right: Box::new(Expression::Identifier("b".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -533,22 +523,30 @@ mod tests {
     Test::new()
       .input("{ $1 > 0 && $2 ~ /foo/ }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            binop(
-              unary(UnaryOp::FieldAccess, num("1")),
-              BinaryOp::Greater,
-              num("0"),
-            ),
-            BinaryOp::And,
-            binop(
-              unary(UnaryOp::FieldAccess, num("2")),
-              BinaryOp::Match,
-              Expression::Regex("foo".to_string()),
-            ),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Unary {
+                  operand: Box::new(Expression::Number("1".to_string())),
+                  operator: UnaryOp::FieldAccess,
+                }),
+                operator: BinaryOp::Greater,
+                right: Box::new(Expression::Number("0".to_string())),
+              }),
+              operator: BinaryOp::And,
+              right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Unary {
+                  operand: Box::new(Expression::Number("2".to_string())),
+                  operator: UnaryOp::FieldAccess,
+                }),
+                operator: BinaryOp::Match,
+                right: Box::new(Expression::Regex("foo".to_string())),
+              }),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -558,10 +556,16 @@ mod tests {
     Test::new()
       .input("{ a += 1 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(assign(ident("a"), AssignOp::Add, num("1")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Assignment {
+              operator: AssignOp::Add,
+              target: Box::new(Expression::Identifier("a".to_string())),
+              value: Box::new(Expression::Number("1".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -579,14 +583,20 @@ mod tests {
     Test::new()
       .input("{ 2 ^ 3 ^ 4 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            num("2"),
-            BinaryOp::Power,
-            binop(num("3"), BinaryOp::Power, num("4")),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Number("2".to_string())),
+              operator: BinaryOp::Power,
+              right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number("3".to_string())),
+                operator: BinaryOp::Power,
+                right: Box::new(Expression::Number("4".to_string())),
+              }),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -596,14 +606,21 @@ mod tests {
     Test::new()
       .input("$1 > 0 { foo }")
       .expected(Program {
-        items: vec![pattern_action(
-          Some(Pattern::Expression(binop(
-            unary(UnaryOp::FieldAccess, num("1")),
-            BinaryOp::Greater,
-            num("0"),
-          ))),
-          vec![expr_item(ident("foo"))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Identifier(
+              "foo".to_string(),
+            ))],
+          },
+          pattern: Some(Pattern::Expression(Expression::Binary {
+            left: Box::new(Expression::Unary {
+              operand: Box::new(Expression::Number("1".to_string())),
+              operator: UnaryOp::FieldAccess,
+            }),
+            operator: BinaryOp::Greater,
+            right: Box::new(Expression::Number("0".to_string())),
+          })),
+        })],
       })
       .run();
   }
@@ -613,10 +630,15 @@ mod tests {
     Test::new()
       .input("{ $1 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(unary(UnaryOp::FieldAccess, num("1")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Unary {
+              operand: Box::new(Expression::Number("1".to_string())),
+              operator: UnaryOp::FieldAccess,
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -626,13 +648,18 @@ mod tests {
     Test::new()
       .input("{ foo(1, 2) }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::FunctionCall {
-            arguments: vec![num("1"), num("2")],
-            name: "foo".to_string(),
-          })],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::FunctionCall {
+              arguments: vec![
+                Expression::Number("1".to_string()),
+                Expression::Number("2".to_string()),
+              ],
+              name: "foo".to_string(),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -645,14 +672,18 @@ mod tests {
         items: vec![
           TopLevelItem::Function(FunctionDefinition {
             body: Block {
-              items: vec![expr_item(ident("bar"))],
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "bar".to_string(),
+              ))],
             },
             name: "foo".to_string(),
             parameters: Vec::new(),
           }),
           TopLevelItem::Function(FunctionDefinition {
             body: Block {
-              items: vec![expr_item(ident("foo"))],
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "foo".to_string(),
+              ))],
             },
             name: "baz".to_string(),
             parameters: vec!["qux".to_string(), "bob".to_string()],
@@ -667,14 +698,20 @@ mod tests {
     Test::new()
       .input("{ (1 + 2) * 3 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            binop(num("1"), BinaryOp::Add, num("2")),
-            BinaryOp::Multiply,
-            num("3"),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number("1".to_string())),
+                operator: BinaryOp::Add,
+                right: Box::new(Expression::Number("2".to_string())),
+              }),
+              operator: BinaryOp::Multiply,
+              right: Box::new(Expression::Number("3".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -684,10 +721,16 @@ mod tests {
     Test::new()
       .input("{ a in b }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(ident("a"), BinaryOp::In, ident("b")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Identifier("a".to_string())),
+              operator: BinaryOp::In,
+              right: Box::new(Expression::Identifier("b".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -697,10 +740,14 @@ mod tests {
     Test::new()
       .input("{ ++a }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::PreIncrement(Box::new(ident("a"))))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::PreIncrement(
+              Box::new(Expression::Identifier("a".to_string())),
+            ))],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -710,14 +757,20 @@ mod tests {
     Test::new()
       .input("{ a || b && c }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            ident("a"),
-            BinaryOp::Or,
-            binop(ident("b"), BinaryOp::And, ident("c")),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Identifier("a".to_string())),
+              operator: BinaryOp::Or,
+              right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Identifier("b".to_string())),
+                operator: BinaryOp::And,
+                right: Box::new(Expression::Identifier("c".to_string())),
+              }),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -727,14 +780,16 @@ mod tests {
     Test::new()
       .input("{ a ~ /foo/ }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(binop(
-            ident("a"),
-            BinaryOp::Match,
-            Expression::Regex("foo".to_string()),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Identifier("a".to_string())),
+              operator: BinaryOp::Match,
+              right: Box::new(Expression::Regex("foo".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -744,10 +799,15 @@ mod tests {
     Test::new()
       .input("{ -a }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(unary(UnaryOp::Negate, ident("a")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Unary {
+              operand: Box::new(Expression::Identifier("a".to_string())),
+              operator: UnaryOp::Negate,
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -757,21 +817,27 @@ mod tests {
     Test::new()
       .input("{ foo { bar { baz } } qux }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![
-            expr_item(ident("foo")),
-            BlockItem::Block(Block {
-              items: vec![
-                expr_item(ident("bar")),
-                BlockItem::Block(Block {
-                  items: vec![expr_item(ident("baz"))],
-                }),
-              ],
-            }),
-            expr_item(ident("qux")),
-          ],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![
+              BlockItem::Expression(Expression::Identifier("foo".to_string())),
+              BlockItem::Block(Block {
+                items: vec![
+                  BlockItem::Expression(Expression::Identifier(
+                    "bar".to_string(),
+                  )),
+                  BlockItem::Block(Block {
+                    items: vec![BlockItem::Expression(Expression::Identifier(
+                      "baz".to_string(),
+                    ))],
+                  }),
+                ],
+              }),
+              BlockItem::Expression(Expression::Identifier("qux".to_string())),
+            ],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -781,13 +847,18 @@ mod tests {
     Test::new()
       .input("{ $$1 }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(unary(
-            UnaryOp::FieldAccess,
-            unary(UnaryOp::FieldAccess, num("1")),
-          ))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Unary {
+              operand: Box::new(Expression::Unary {
+                operand: Box::new(Expression::Number("1".to_string())),
+                operator: UnaryOp::FieldAccess,
+              }),
+              operator: UnaryOp::FieldAccess,
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -798,17 +869,50 @@ mod tests {
       .input("BEGIN { foo } END { bar } baz { qux } /foo/ { bob } { bar }")
       .expected(Program {
         items: vec![
-          pattern_action(Some(Pattern::Begin), vec![expr_item(ident("foo"))]),
-          pattern_action(Some(Pattern::End), vec![expr_item(ident("bar"))]),
-          pattern_action(
-            Some(Pattern::Expression(ident("baz"))),
-            vec![expr_item(ident("qux"))],
-          ),
-          pattern_action(
-            Some(Pattern::Expression(Expression::Regex("foo".to_string()))),
-            vec![expr_item(ident("bob"))],
-          ),
-          pattern_action(None, vec![expr_item(ident("bar"))]),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "foo".to_string(),
+              ))],
+            },
+            pattern: Some(Pattern::Begin),
+          }),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "bar".to_string(),
+              ))],
+            },
+            pattern: Some(Pattern::End),
+          }),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "qux".to_string(),
+              ))],
+            },
+            pattern: Some(Pattern::Expression(Expression::Identifier(
+              "baz".to_string(),
+            ))),
+          }),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "bob".to_string(),
+              ))],
+            },
+            pattern: Some(Pattern::Expression(Expression::Regex(
+              "foo".to_string(),
+            ))),
+          }),
+          TopLevelItem::PatternAction(PatternAction {
+            action: Block {
+              items: vec![BlockItem::Expression(Expression::Identifier(
+                "bar".to_string(),
+              ))],
+            },
+            pattern: None,
+          }),
         ],
       })
       .run();
@@ -819,10 +923,14 @@ mod tests {
     Test::new()
       .input("{ a++ }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::PostIncrement(Box::new(ident("a"))))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::PostIncrement(
+              Box::new(Expression::Identifier("a".to_string())),
+            ))],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -832,10 +940,14 @@ mod tests {
     Test::new()
       .input("{ \"hello\" }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::String("hello".to_string()))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::String(
+              "hello".to_string(),
+            ))],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -845,14 +957,16 @@ mod tests {
     Test::new()
       .input("{ a ? b : c }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(Expression::Ternary {
-            condition: Box::new(ident("a")),
-            else_branch: Box::new(ident("c")),
-            then_branch: Box::new(ident("b")),
-          })],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Ternary {
+              condition: Box::new(Expression::Identifier("a".to_string())),
+              else_branch: Box::new(Expression::Identifier("c".to_string())),
+              then_branch: Box::new(Expression::Identifier("b".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
@@ -862,28 +976,16 @@ mod tests {
     Test::new()
       .input("{ !a }")
       .expected(Program {
-        items: vec![pattern_action(
-          None,
-          vec![expr_item(unary(UnaryOp::Not, ident("a")))],
-        )],
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Unary {
+              operand: Box::new(Expression::Identifier("a".to_string())),
+              operator: UnaryOp::Not,
+            })],
+          },
+          pattern: None,
+        })],
       })
       .run();
-  }
-
-  fn pattern_action(
-    pattern: Option<Pattern>,
-    items: Vec<BlockItem>,
-  ) -> TopLevelItem {
-    TopLevelItem::PatternAction(PatternAction {
-      action: Block { items },
-      pattern,
-    })
-  }
-
-  fn unary(operator: UnaryOp, operand: Expression) -> Expression {
-    Expression::Unary {
-      operand: Box::new(operand),
-      operator,
-    }
   }
 }
