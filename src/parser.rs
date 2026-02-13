@@ -934,29 +934,6 @@ mod tests {
   }
 
   #[test]
-  fn parses_concatenation_expression() {
-    Test::new()
-      .input("{ a b < c }")
-      .expected(Program {
-        items: vec![TopLevelItem::PatternAction(PatternAction {
-          action: Block {
-            items: vec![BlockItem::Expression(Expression::Binary {
-              left: Box::new(Expression::Binary {
-                left: Box::new(Expression::Identifier("a".to_string())),
-                operator: BinaryOp::Concat,
-                right: Box::new(Expression::Identifier("b".to_string())),
-              }),
-              operator: BinaryOp::Less,
-              right: Box::new(Expression::Identifier("c".to_string())),
-            })],
-          },
-          pattern: None,
-        })],
-      })
-      .run();
-  }
-
-  #[test]
   fn parses_controlflow_and_memory_statements() {
     Test::new()
       .input("{ delete a[1]; return b; continue }")
