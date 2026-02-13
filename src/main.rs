@@ -14,6 +14,7 @@ use {
   lexer::{Span, Spanned},
   std::{
     fmt::{self, Display, Formatter},
+    ops::Range,
     fs,
     path::{Path, PathBuf},
     process,

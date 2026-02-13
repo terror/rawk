@@ -73,7 +73,7 @@ fn token_parser<'src>()
 
 #[cfg(test)]
 mod tests {
-  use {super::*, std::ops::Range};
+  use super::*;
 
   struct Test<'src> {
     expected: Vec<(Token, Range<usize>)>,
