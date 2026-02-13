@@ -19,7 +19,7 @@ use {
     path::{Path, PathBuf},
     process,
   },
-  token::Token,
+  token::{NumberKind, NumberLiteral, Token},
 };
 
 mod arguments;
