@@ -57,8 +57,40 @@ fn token_parser<'src>()
       _ => Token::Identifier(identifier.to_string()),
     });
 
-  let integer =
-    text::int(10).map(|integer: &str| Token::Integer(integer.to_string()));
+  let digits = one_of("0123456789").repeated().at_least(1);
+
+  let exponent = one_of("eE")
+    .then(one_of("+-").or_not())
+    .then(digits.clone());
+
+  let hexadecimal = choice((just("0x"), just("0X")))
+    .then(one_of("0123456789abcdefABCDEF").repeated().at_least(1))
+    .to_slice();
+
+  let float_with_leading_digits = digits
+    .clone()
+    .then(just('.'))
+    .then(one_of("0123456789").repeated())
+    .then(exponent.clone().or_not())
+    .to_slice();
+
+  let float_without_leading_digits = just('.')
+    .then(digits.clone())
+    .then(exponent.clone().or_not())
+    .to_slice();
+
+  let scientific = digits.clone().then(exponent).to_slice();
+
+  let integer = text::int(10);
+
+  let number = choice((
+    hexadecimal,
+    float_with_leading_digits,
+    float_without_leading_digits,
+    scientific,
+    integer,
+  ))
+  .map(|number: &str| Token::Integer(number.to_string()));
 
   let single_quoted = just('\'')
     .ignore_then(any().filter(|c| *c != '\'').repeated().to_slice())
@@ -121,7 +153,7 @@ fn token_parser<'src>()
 
   choice((
     identifier,
-    integer,
+    number,
     single_quoted,
     double_quoted,
     operators,
@@ -210,53 +242,60 @@ mod tests {
   }
 
   #[test]
-  fn integers_strings_operators_and_punctuation() {
+  fn numbers_strings_operators_and_punctuation() {
     Test::new()
       .input(
-        "123 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
+        "123 1.5 .5 1. 1e3 1E-2 0x10 0X1F 'foo' \"bar\" + - * / % ^ = += -= *= /= %= ^= ? : || && ~ !~ < <= == != > >= ++ -- $ [ ] >> | { } ( ) , ;",
       )
       .expected([
         (Token::Integer("123".to_string()), 0..3),
-        (Token::String("foo".to_string()), 4..9),
-        (Token::String("bar".to_string()), 10..15),
-        (Token::Plus, 16..17),
-        (Token::Minus, 18..19),
-        (Token::Star, 20..21),
-        (Token::Slash, 22..23),
-        (Token::Percent, 24..25),
-        (Token::Caret, 26..27),
-        (Token::Assign, 28..29),
-        (Token::PlusAssign, 30..32),
-        (Token::MinusAssign, 33..35),
-        (Token::StarAssign, 36..38),
-        (Token::SlashAssign, 39..41),
-        (Token::PercentAssign, 42..44),
-        (Token::CaretAssign, 45..47),
-        (Token::Question, 48..49),
-        (Token::Colon, 50..51),
-        (Token::OrOr, 52..54),
-        (Token::AndAnd, 55..57),
-        (Token::Tilde, 58..59),
-        (Token::BangTilde, 60..62),
-        (Token::Less, 63..64),
-        (Token::LessEqual, 65..67),
-        (Token::EqualEqual, 68..70),
-        (Token::BangEqual, 71..73),
-        (Token::Greater, 74..75),
-        (Token::GreaterEqual, 76..78),
-        (Token::PlusPlus, 79..81),
-        (Token::MinusMinus, 82..84),
-        (Token::Dollar, 85..86),
-        (Token::LBracket, 87..88),
-        (Token::RBracket, 89..90),
-        (Token::GreaterGreater, 91..93),
-        (Token::Pipe, 94..95),
-        (Token::LBrace, 96..97),
-        (Token::RBrace, 98..99),
-        (Token::LParen, 100..101),
-        (Token::RParen, 102..103),
-        (Token::Comma, 104..105),
-        (Token::Semicolon, 106..107),
+        (Token::Integer("1.5".to_string()), 4..7),
+        (Token::Integer(".5".to_string()), 8..10),
+        (Token::Integer("1.".to_string()), 11..13),
+        (Token::Integer("1e3".to_string()), 14..17),
+        (Token::Integer("1E-2".to_string()), 18..22),
+        (Token::Integer("0x10".to_string()), 23..27),
+        (Token::Integer("0X1F".to_string()), 28..32),
+        (Token::String("foo".to_string()), 33..38),
+        (Token::String("bar".to_string()), 39..44),
+        (Token::Plus, 45..46),
+        (Token::Minus, 47..48),
+        (Token::Star, 49..50),
+        (Token::Slash, 51..52),
+        (Token::Percent, 53..54),
+        (Token::Caret, 55..56),
+        (Token::Assign, 57..58),
+        (Token::PlusAssign, 59..61),
+        (Token::MinusAssign, 62..64),
+        (Token::StarAssign, 65..67),
+        (Token::SlashAssign, 68..70),
+        (Token::PercentAssign, 71..73),
+        (Token::CaretAssign, 74..76),
+        (Token::Question, 77..78),
+        (Token::Colon, 79..80),
+        (Token::OrOr, 81..83),
+        (Token::AndAnd, 84..86),
+        (Token::Tilde, 87..88),
+        (Token::BangTilde, 89..91),
+        (Token::Less, 92..93),
+        (Token::LessEqual, 94..96),
+        (Token::EqualEqual, 97..99),
+        (Token::BangEqual, 100..102),
+        (Token::Greater, 103..104),
+        (Token::GreaterEqual, 105..107),
+        (Token::PlusPlus, 108..110),
+        (Token::MinusMinus, 111..113),
+        (Token::Dollar, 114..115),
+        (Token::LBracket, 116..117),
+        (Token::RBracket, 118..119),
+        (Token::GreaterGreater, 120..122),
+        (Token::Pipe, 123..124),
+        (Token::LBrace, 125..126),
+        (Token::RBrace, 127..128),
+        (Token::LParen, 129..130),
+        (Token::RParen, 131..132),
+        (Token::Comma, 133..134),
+        (Token::Semicolon, 135..136),
       ])
       .run();
   }
@@ -275,7 +314,7 @@ mod tests {
     assert_eq!(
       actual,
       vec![
-        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, non-zero digit, '0', ''', '\"', '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', or end of input".to_string(),
+        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, ''', '\"', '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', or end of input".to_string(),
       ],
     );
   }
