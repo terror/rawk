@@ -3,11 +3,12 @@ use {
   arguments::Arguments,
   ariadne::{Color, Label, Report, ReportKind, Source},
   ast::{
-    Block, BlockItem, FunctionDefinition, Pattern, PatternAction, Program,
-    TopLevelItem,
+    AssignOp, BinaryOp, Block, BlockItem, Expression, FunctionDefinition,
+    Pattern, PatternAction, Program, TopLevelItem, UnaryOp,
   },
   chumsky::{
     input::{Stream, ValueInput},
+    pratt::*,
     prelude::*,
   },
   clap::Parser as Clap,

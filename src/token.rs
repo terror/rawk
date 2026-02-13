@@ -18,6 +18,7 @@ pub(crate) struct NumberLiteral {
 pub(crate) enum Token {
   AndAnd,
   Assign,
+  Bang,
   BangEqual,
   BangTilde,
   Begin,
@@ -85,6 +86,7 @@ impl Display for Token {
     match self {
       Self::AndAnd => write!(f, "&&"),
       Self::Assign => write!(f, "="),
+      Self::Bang => write!(f, "!"),
       Self::BangEqual => write!(f, "!="),
       Self::BangTilde => write!(f, "!~"),
       Self::Begin => write!(f, "BEGIN"),
