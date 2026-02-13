@@ -170,14 +170,27 @@ mod tests {
   }
 
   #[test]
-  fn spans_match_token_ranges() {
+  fn lexes_adjacent_tokens_without_whitespace() {
     Test::new()
-      .input("foo 123 \"bar\"")
+      .input("foo{bar}(1);")
       .expected([
         (Token::Identifier("foo".to_string()), 0..3),
-        (Token::Integer("123".to_string()), 4..7),
-        (Token::String("bar".to_string()), 8..13),
+        (Token::LBrace, 3..4),
+        (Token::Identifier("bar".to_string()), 4..7),
+        (Token::RBrace, 7..8),
+        (Token::LParen, 8..9),
+        (Token::Integer("1".to_string()), 9..10),
+        (Token::RParen, 10..11),
+        (Token::Semicolon, 11..12),
       ])
+      .run();
+  }
+
+  #[test]
+  fn trailing_comment_without_newline_is_ignored() {
+    Test::new()
+      .input("foo # bar")
+      .expected([(Token::Identifier("foo".to_string()), 0..3)])
       .run();
   }
 
