@@ -113,6 +113,11 @@ pub(crate) enum Expression {
     arguments: Vec<Expression>,
     name: String,
   },
+  Getline {
+    command: Option<String>,
+    input: Option<String>,
+    target: Option<Box<Expression>>,
+  },
   Identifier(String),
   Index {
     indices: Vec<Expression>,

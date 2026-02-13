@@ -41,12 +41,36 @@ where
     )
     .map(|(name, indices)| Expression::Index { indices, name });
 
+  let variable = array_subscript
+    .clone()
+    .or(identifier.map(Expression::Identifier));
+
+  let getline = choice((
+    select! { Token::String(string) => string }
+      .then_ignore(just(Token::Pipe))
+      .then_ignore(just(Token::Getline))
+      .map(Some),
+    just(Token::Getline).to(None),
+  ))
+  .then(variable.or_not())
+  .then(
+    just(Token::Less)
+      .ignore_then(select! { Token::String(string) => string })
+      .or_not(),
+  )
+  .map(|((command, target), input)| Expression::Getline {
+    command,
+    input,
+    target: target.map(Box::new),
+  });
+
   let grouped = expr.delimited_by(just(Token::LParen), just(Token::RParen));
 
   let ident_expr = identifier.map(Expression::Identifier);
 
   choice((
     number,
+    getline,
     string,
     regex,
     function_call,
@@ -906,6 +930,45 @@ mod tests {
             parameters: vec!["qux".to_string(), "bob".to_string()],
           }),
         ],
+      })
+      .run();
+  }
+
+  #[test]
+  fn parses_getline_expression() {
+    Test::new()
+      .input("{ getline; getline foo; getline foo[1]; \"cmd\" | getline bar < \"in\" }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![
+              BlockItem::Expression(Expression::Getline {
+                command: None,
+                input: None,
+                target: None,
+              }),
+              BlockItem::Expression(Expression::Getline {
+                command: None,
+                input: None,
+                target: Some(Box::new(Expression::Identifier("foo".to_string()))),
+              }),
+              BlockItem::Expression(Expression::Getline {
+                command: None,
+                input: None,
+                target: Some(Box::new(Expression::Index {
+                  indices: vec![Expression::Number("1".to_string())],
+                  name: "foo".to_string(),
+                })),
+              }),
+              BlockItem::Expression(Expression::Getline {
+                command: Some("cmd".to_string()),
+                input: Some("in".to_string()),
+                target: Some(Box::new(Expression::Identifier("bar".to_string()))),
+              }),
+            ],
+          },
+          pattern: None,
+        })],
       })
       .run();
   }
