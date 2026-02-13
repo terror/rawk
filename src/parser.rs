@@ -2,13 +2,104 @@ use super::*;
 
 pub(crate) type ParseError<'src> = Rich<'src, Token, Span>;
 
-fn atom_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+type ParseExtra<'src> = extra::Err<ParseError<'src>>;
+
+trait ParserInput<'src>: ValueInput<'src, Token = Token, Span = Span> {}
+
+impl<'src, I> ParserInput<'src> for I where
+  I: ValueInput<'src, Token = Token, Span = Span>
+{
+}
+
+trait BlockParser<'src, I>:
+  Parser<'src, I, Block, ParseExtra<'src>> + Clone + 'src
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> BlockParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Block, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait ExprListParser<'src, I>:
+  Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> ExprListParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait ExprParser<'src, I>:
+  Parser<'src, I, Expression, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> ExprParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Expression, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait OutputRedirectionParser<'src, I>:
+  Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> OutputRedirectionParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait StatementParser<'src, I>:
+  Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> StatementParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait StringParser<'src, I>:
+  Parser<'src, I, String, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> StringParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, String, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+fn atom_parser<'src, I>(
+  expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
+where
+  I: ParserInput<'src>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
@@ -81,22 +172,12 @@ where
 }
 
 fn block_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  output_redirection: impl Parser<
-    'src,
-    I,
-    OutputRedirection,
-    extra::Err<ParseError<'src>>,
-  > + Clone
-  + 'src,
-) -> impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  expr_list: impl ExprListParser<'src, I>,
+  output_redirection: impl OutputRedirectionParser<'src, I>,
+) -> impl Parser<'src, I, Block, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   recursive(|block| {
     let statement = recursive(|statement| {
@@ -121,12 +202,10 @@ where
 }
 
 fn expr_list_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   expr
     .separated_by(just(Token::Comma))
@@ -136,9 +215,9 @@ where
 }
 
 fn expression_parser<'src, I>()
--> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+-> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   recursive(|expr| {
     let atom = atom_parser(expr.clone()).boxed();
@@ -208,16 +287,12 @@ where
 }
 
 fn if_statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  block: impl BlockParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   just(Token::If)
     .ignore_then(
@@ -246,10 +321,10 @@ where
 }
 
 fn output_redirection_parser<'src, I>(
-  string: impl Parser<'src, I, String, extra::Err<ParseError<'src>>> + Clone + 'src,
-) -> impl Parser<'src, I, OutputRedirection, extra::Err<ParseError<'src>>> + Clone
+  string: impl StringParser<'src, I>,
+) -> impl Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   choice((
     just(Token::GreaterGreater)
@@ -289,10 +364,9 @@ pub(crate) fn parse(
   )
 }
 
-fn parser<'src, I>()
--> impl Parser<'src, I, Program, extra::Err<ParseError<'src>>>
+fn parser<'src, I>() -> impl Parser<'src, I, Program, ParseExtra<'src>>
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
@@ -348,12 +422,10 @@ where
 }
 
 fn parser_additive_pratt<'src, I>(
-  atom: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+  atom: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   macro_rules! binary {
     ($assoc:expr, $token:expr, $op:expr) => {
@@ -408,12 +480,10 @@ where
 }
 
 fn parser_logical_pratt<'src, I>(
-  concat_expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+  concat_expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   macro_rules! binary {
     ($assoc:expr, $token:expr, $op:expr) => {
@@ -457,26 +527,14 @@ where
 }
 
 fn statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  output_redirection: impl Parser<
-    'src,
-    I,
-    OutputRedirection,
-    extra::Err<ParseError<'src>>,
-  > + Clone
-  + 'src,
-  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  expr_list: impl ExprListParser<'src, I>,
+  output_redirection: impl OutputRedirectionParser<'src, I>,
+  block: impl BlockParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let print_item = just(Token::Print)
     .ignore_then(expr_list.clone())
@@ -569,15 +627,11 @@ where
 }
 
 fn switch_statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let switch_label = choice((
     just(Token::Case)
