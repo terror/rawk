@@ -40,19 +40,9 @@ where
     identifier.to(Pattern::ExpressionStub),
   ));
 
-  let block_atom = choice((
-    just(Token::Function).ignored(),
-    just(Token::Begin).ignored(),
-    just(Token::End).ignored(),
-    just(Token::LParen).ignored(),
-    just(Token::RParen).ignored(),
-    just(Token::Comma).ignored(),
-    just(Token::Semicolon).ignored(),
-    select! { Token::Identifier(_) => () },
-    select! { Token::Integer(_) => () },
-    select! { Token::String(_) => () },
-  ))
-  .to(BlockItem::TokenStub);
+  let block_atom = any()
+    .filter(|token: &Token| !matches!(token, Token::LBrace | Token::RBrace))
+    .to(BlockItem::TokenStub);
 
   let block = recursive(|block| {
     let item = block.clone().map(BlockItem::Block).or(block_atom.clone());
