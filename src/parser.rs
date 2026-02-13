@@ -12,11 +12,12 @@ where
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
-  let number = select! { Token::Number(n) => Expression::Number(n.lexeme) };
+  let number =
+    select! { Token::Number(number) => Expression::Number(number.lexeme) };
 
-  let string = select! { Token::String(s) => Expression::String(s) };
+  let string = select! { Token::String(string) => Expression::String(string) };
 
-  let regex = select! { Token::Regex(r) => Expression::Regex(r) };
+  let regex = select! { Token::Regex(regex) => Expression::Regex(regex) };
 
   let function_call = identifier
     .then(
@@ -203,26 +204,22 @@ where
   I: ValueInput<'src, Token = Token, Span = Span>,
 {
   atom.pratt((
-    // Postfix increment/decrement (highest precedence)
     postfix(13, just(Token::PlusPlus), |lhs, _, _| {
       Expression::PostIncrement(Box::new(lhs))
     }),
     postfix(13, just(Token::MinusMinus), |lhs, _, _| {
       Expression::PostDecrement(Box::new(lhs))
     }),
-    // Prefix increment/decrement
     prefix(12, just(Token::PlusPlus), |_, rhs, _| {
       Expression::PreIncrement(Box::new(rhs))
     }),
     prefix(12, just(Token::MinusMinus), |_, rhs, _| {
       Expression::PreDecrement(Box::new(rhs))
     }),
-    // Field access
     prefix(11, just(Token::Dollar), |_, rhs, _| Expression::Unary {
       operand: Box::new(rhs),
       operator: UnaryOp::FieldAccess,
     }),
-    // Unary operators
     prefix(10, just(Token::Bang), |_, rhs, _| Expression::Unary {
       operand: Box::new(rhs),
       operator: UnaryOp::Not,
@@ -235,7 +232,6 @@ where
       operand: Box::new(rhs),
       operator: UnaryOp::Positive,
     }),
-    // Exponentiation (right-associative)
     infix(right(9), just(Token::Caret), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -243,7 +239,6 @@ where
         right: Box::new(r),
       }
     }),
-    // Multiplicative
     infix(left(8), just(Token::Star), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -265,7 +260,6 @@ where
         right: Box::new(r),
       }
     }),
-    // Additive
     infix(left(7), just(Token::Plus), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -280,7 +274,6 @@ where
         right: Box::new(r),
       }
     }),
-    // Comparison
     infix(left(5), just(Token::Less), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -323,7 +316,6 @@ where
         right: Box::new(r),
       }
     }),
-    // Match operators
     infix(left(4), just(Token::Tilde), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -338,13 +330,11 @@ where
         right: Box::new(r),
       }
     }),
-    // Array membership
     infix(left(3), just(Token::In), |l, _, r, _| Expression::Binary {
       left: Box::new(l),
       operator: BinaryOp::In,
       right: Box::new(r),
     }),
-    // Logical AND
     infix(left(2), just(Token::AndAnd), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -352,7 +342,6 @@ where
         right: Box::new(r),
       }
     }),
-    // Logical OR
     infix(left(1), just(Token::OrOr), |l, _, r, _| {
       Expression::Binary {
         left: Box::new(l),
@@ -541,7 +530,6 @@ mod tests {
 
   #[test]
   fn parses_complex_expression() {
-    // $1 > 0 && $2 ~ /foo/
     Test::new()
       .input("{ $1 > 0 && $2 ~ /foo/ }")
       .expected(Program {
