@@ -81,6 +81,20 @@ where
 {
 }
 
+trait TerminatorParser<'src, I>:
+  Parser<'src, I, (), ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> TerminatorParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, (), ParseExtra<'src>> + Clone + 'src,
+{
+}
+
 trait StringParser<'src, I>:
   Parser<'src, I, String, ParseExtra<'src>> + Clone + 'src
 where
@@ -174,6 +188,7 @@ fn block_parser<'src, I>(
   expr: impl ExprParser<'src, I>,
   expr_list: impl ExprListParser<'src, I>,
   output_redirection: impl OutputRedirectionParser<'src, I>,
+  terminate: impl TerminatorParser<'src, I>,
 ) -> impl Parser<'src, I, Block, ParseExtra<'src>> + Clone
 where
   I: ParserInput<'src>,
@@ -185,16 +200,27 @@ where
         expr_list.clone(),
         output_redirection.clone(),
         block.clone(),
+        terminate.clone(),
         statement,
       )
     });
 
-    block
+    let block_item = block.clone().map(BlockItem::Block).or(statement);
+
+    terminate
       .clone()
-      .map(BlockItem::Block)
-      .or(statement)
       .repeated()
-      .collect::<Vec<_>>()
+      .ignore_then(
+        block_item
+          .clone()
+          .separated_by(terminate.clone())
+          .at_least(1)
+          .allow_trailing()
+          .collect::<Vec<_>>()
+          .or_not()
+          .map(Option::unwrap_or_default),
+      )
+      .then_ignore(terminate.repeated())
       .delimited_by(just(Token::LBrace), just(Token::RBrace))
       .map(|items| Block { items })
   })
@@ -376,7 +402,14 @@ where
   let output_redirection =
     output_redirection_parser(select! { Token::String(string) => string });
 
-  let block = block_parser(expr.clone(), expr_list, output_redirection);
+  let terminate = terminate_parser();
+
+  let block = block_parser(
+    expr.clone(),
+    expr_list,
+    output_redirection,
+    terminate.clone(),
+  );
 
   let function_definition = just(Token::Function)
     .ignore_then(identifier)
@@ -414,8 +447,10 @@ where
     .or(pattern.or_not().then(block).map(|(pattern, action)| {
       TopLevelItem::PatternAction(PatternAction { action, pattern })
     }))
+    .padded_by(terminate.clone().repeated())
     .repeated()
     .collect::<Vec<_>>()
+    .then_ignore(terminate.repeated())
     .then_ignore(end())
     .map(|items| Program { items })
 }
@@ -530,6 +565,7 @@ fn statement_parser<'src, I>(
   expr_list: impl ExprListParser<'src, I>,
   output_redirection: impl OutputRedirectionParser<'src, I>,
   block: impl BlockParser<'src, I>,
+  terminate: impl TerminatorParser<'src, I>,
   statement: impl StatementParser<'src, I>,
 ) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
@@ -615,18 +651,18 @@ where
     do_while_statement,
     while_statement,
     if_statement_parser(expr.clone(), block.clone(), statement.clone()),
-    switch_statement_parser(expr.clone(), statement),
+    switch_statement_parser(expr.clone(), terminate, statement),
     controlflow_statement,
     just(Token::Delete)
       .ignore_then(expr.clone())
       .map(BlockItem::Delete),
     expr.map(BlockItem::Expression),
   ))
-  .then_ignore(just(Token::Semicolon).repeated())
 }
 
 fn switch_statement_parser<'src, I>(
   expr: impl ExprParser<'src, I>,
+  terminate: impl TerminatorParser<'src, I>,
   statement: impl StatementParser<'src, I>,
 ) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
@@ -642,11 +678,16 @@ where
   let switch_case = switch_label
     .then_ignore(just(Token::Colon))
     .then(
-      statement
-        .clone()
-        .then_ignore(just(Token::Semicolon).repeated())
-        .repeated()
-        .collect::<Vec<_>>(),
+      terminate.clone().repeated().ignore_then(
+        statement
+          .clone()
+          .separated_by(terminate.clone())
+          .at_least(1)
+          .allow_trailing()
+          .collect::<Vec<_>>()
+          .or_not()
+          .map(Option::unwrap_or_default),
+      ),
     )
     .map(|(label, statements)| SwitchCase { label, statements });
 
@@ -660,6 +701,17 @@ where
         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
     )
     .map(|(expression, cases)| BlockItem::Switch { cases, expression })
+}
+
+fn terminate_parser<'src, I>()
+-> impl Parser<'src, I, (), ParseExtra<'src>> + Clone
+where
+  I: ParserInput<'src>,
+{
+  choice((just(Token::Semicolon), just(Token::Newline)))
+    .repeated()
+    .at_least(1)
+    .ignored()
 }
 
 #[cfg(test)]
@@ -1286,7 +1338,7 @@ mod tests {
   fn parses_loop_statements() {
     Test::new()
       .input(
-        "{ while (a) { b } do { c } while (d) for (i = 0; i < 3; i++) { e } }",
+        "{ while (a) { b }\n do { c } while (d);\n for (i = 0; i < 3; i++) { e } }",
       )
       .expected(Program {
         items: vec![TopLevelItem::PatternAction(PatternAction {
@@ -1382,7 +1434,7 @@ mod tests {
   #[test]
   fn parses_nested_blocks() {
     Test::new()
-      .input("{ foo { bar { baz } } qux }")
+      .input("{ foo; { bar; { baz } }; qux }")
       .expected(Program {
         items: vec![TopLevelItem::PatternAction(PatternAction {
           action: Block {
@@ -1627,5 +1679,18 @@ mod tests {
         })],
       })
       .run();
+  }
+
+  #[test]
+  fn statement_list_requires_terminator() {
+    let (tokens, lex_errors) = lexer::lex("{ break continue }");
+
+    assert_eq!(lex_errors.len(), 0);
+
+    let (program, parse_errors) =
+      super::parse(tokens, "{ break continue }".len());
+
+    assert_eq!(program, None);
+    assert_eq!(parse_errors.len(), 1);
   }
 }

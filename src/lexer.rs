@@ -41,10 +41,10 @@ pub(crate) fn lex(
 pub(crate) fn lexer<'src>()
 -> impl Parser<'src, &'src str, Vec<Spanned<Token>>, extra::Err<LexError<'src>>>
 {
-  let whitespace = one_of(" \t\r\n").repeated().at_least(1).ignored();
+  let whitespace = one_of(" \t").repeated().at_least(1).ignored();
 
   let comment = just('#')
-    .then(any().filter(|c| *c != '\n').repeated())
+    .then(any().filter(|c| !matches!(c, '\n' | '\r')).repeated())
     .ignored();
 
   let padding = whitespace.or(comment).repeated();
@@ -165,6 +165,9 @@ fn operator_parser<'src>()
 fn punctuation_parser<'src>()
 -> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
   choice((
+    just("\r\n").to(Token::Newline),
+    just('\n').to(Token::Newline),
+    just('\r').to(Token::Newline),
     just('{').to(Token::LBrace),
     just('}').to(Token::RBrace),
     just('[').to(Token::LBracket),
@@ -310,7 +313,7 @@ mod tests {
     assert_eq!(
       actual,
       vec![
-        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, '/', '+', '-', '*', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', ''', '\"', or end of input".to_string(),
+        "found '@' expected ' ', '\t', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, '/', '+', '-', '*', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '\r', '\n', '{', '}', '[', ']', '(', ')', ',', ';', ''', '\"', or end of input".to_string(),
       ],
     );
   }
@@ -445,6 +448,8 @@ mod tests {
       .input("foo # bar\n  # baz\n123\t# qux\n\"bar\" # bob")
       .expected([
         (Token::Identifier("foo".to_string()), 0..3),
+        (Token::Newline, 9..10),
+        (Token::Newline, 17..18),
         (
           Token::Number(NumberLiteral {
             kind: NumberKind::Decimal,
@@ -452,6 +457,7 @@ mod tests {
           }),
           18..21,
         ),
+        (Token::Newline, 27..28),
         (Token::String("bar".to_string()), 28..33),
       ])
       .run();
