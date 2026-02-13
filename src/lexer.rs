@@ -4,6 +4,33 @@ pub(crate) type Span = SimpleSpan<usize>;
 pub(crate) type Spanned<T> = (T, Span);
 pub(crate) type LexError<'src> = Rich<'src, char, Span>;
 
+fn identifier_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
+  text::ascii::ident().map(|identifier: &str| match identifier {
+    "function" => Token::Function,
+    "BEGIN" => Token::Begin,
+    "END" => Token::End,
+    "if" => Token::If,
+    "else" => Token::Else,
+    "for" => Token::For,
+    "while" => Token::While,
+    "do" => Token::Do,
+    "switch" => Token::Switch,
+    "case" => Token::Case,
+    "default" => Token::Default,
+    "print" => Token::Print,
+    "printf" => Token::Printf,
+    "delete" => Token::Delete,
+    "break" => Token::Break,
+    "continue" => Token::Continue,
+    "next" => Token::Next,
+    "return" => Token::Return,
+    "getline" => Token::Getline,
+    "in" => Token::In,
+    _ => Token::Identifier(identifier.to_string()),
+  })
+}
+
 pub(crate) fn lex(
   source: &str,
 ) -> (Option<Vec<Spanned<Token>>>, Vec<LexError<'_>>) {
@@ -30,78 +57,40 @@ pub(crate) fn lexer<'src>()
     .then_ignore(end())
 }
 
-fn token_parser<'src>()
+fn number_parser<'src>()
 -> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
-  let identifier =
-    text::ascii::ident().map(|identifier: &str| match identifier {
-      "function" => Token::Function,
-      "BEGIN" => Token::Begin,
-      "END" => Token::End,
-      "if" => Token::If,
-      "else" => Token::Else,
-      "for" => Token::For,
-      "while" => Token::While,
-      "do" => Token::Do,
-      "switch" => Token::Switch,
-      "case" => Token::Case,
-      "default" => Token::Default,
-      "print" => Token::Print,
-      "printf" => Token::Printf,
-      "delete" => Token::Delete,
-      "break" => Token::Break,
-      "continue" => Token::Continue,
-      "next" => Token::Next,
-      "return" => Token::Return,
-      "getline" => Token::Getline,
-      "in" => Token::In,
-      _ => Token::Identifier(identifier.to_string()),
-    });
-
   let digits = one_of("0123456789").repeated().at_least(1);
 
-  let exponent = one_of("eE")
-    .then(one_of("+-").or_not())
-    .then(digits.clone());
+  let exponent = one_of("eE").then(one_of("+-").or_not()).then(digits);
 
   let hexadecimal = choice((just("0x"), just("0X")))
     .then(one_of("0123456789abcdefABCDEF").repeated().at_least(1))
     .to_slice();
 
   let float_with_leading_digits = digits
-    .clone()
     .then(just('.'))
     .then(one_of("0123456789").repeated())
-    .then(exponent.clone().or_not())
+    .then(exponent.or_not())
     .to_slice();
 
-  let float_without_leading_digits = just('.')
-    .then(digits.clone())
-    .then(exponent.clone().or_not())
-    .to_slice();
+  let float_without_leading_digits =
+    just('.').then(digits).then(exponent.or_not()).to_slice();
 
-  let scientific = digits.clone().then(exponent).to_slice();
-
+  let scientific = digits.then(exponent).to_slice();
   let integer = text::int(10);
 
-  let number = choice((
+  choice((
     hexadecimal,
     float_with_leading_digits,
     float_without_leading_digits,
     scientific,
     integer,
   ))
-  .map(|number: &str| Token::Integer(number.to_string()));
+  .map(|number: &str| Token::Integer(number.to_string()))
+}
 
-  let single_quoted = just('\'')
-    .ignore_then(any().filter(|c| *c != '\'').repeated().to_slice())
-    .then_ignore(just('\''))
-    .map(|s: &str| Token::String(s.to_string()));
-
-  let double_quoted = just('"')
-    .ignore_then(any().filter(|c| *c != '"').repeated().to_slice())
-    .then_ignore(just('"'))
-    .map(|s: &str| Token::String(s.to_string()));
-
+fn operator_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
   let multi_char_operators = choice((
     just("+=").to(Token::PlusAssign),
     just("-=").to(Token::MinusAssign),
@@ -138,9 +127,12 @@ fn token_parser<'src>()
     just('|').to(Token::Pipe),
   ));
 
-  let operators = choice((multi_char_operators, single_char_operators));
+  choice((multi_char_operators, single_char_operators))
+}
 
-  let punctuation = choice((
+fn punctuation_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
+  choice((
     just('{').to(Token::LBrace),
     just('}').to(Token::RBrace),
     just('[').to(Token::LBracket),
@@ -149,15 +141,32 @@ fn token_parser<'src>()
     just(')').to(Token::RParen),
     just(',').to(Token::Comma),
     just(';').to(Token::Semicolon),
-  ));
+  ))
+}
 
+fn string_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
+  let single_quoted = just('\'')
+    .ignore_then(any().filter(|c| *c != '\'').repeated().to_slice())
+    .then_ignore(just('\''))
+    .map(|s: &str| Token::String(s.to_string()));
+
+  let double_quoted = just('"')
+    .ignore_then(any().filter(|c| *c != '"').repeated().to_slice())
+    .then_ignore(just('"'))
+    .map(|s: &str| Token::String(s.to_string()));
+
+  choice((single_quoted, double_quoted))
+}
+
+fn token_parser<'src>()
+-> impl Parser<'src, &'src str, Token, extra::Err<LexError<'src>>> {
   choice((
-    identifier,
-    number,
-    single_quoted,
-    double_quoted,
-    operators,
-    punctuation,
+    identifier_parser(),
+    number_parser(),
+    operator_parser(),
+    punctuation_parser(),
+    string_parser(),
   ))
 }
 
@@ -242,6 +251,42 @@ mod tests {
   }
 
   #[test]
+  fn invalid_input_reports_errors() {
+    let (tokens, errors) = super::lex("@");
+
+    assert_eq!(tokens, None);
+
+    let actual = errors
+      .into_iter()
+      .map(|error| error.to_string())
+      .collect::<Vec<_>>();
+
+    assert_eq!(
+      actual,
+      vec![
+        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', ''', '\"', or end of input".to_string(),
+      ],
+    );
+  }
+
+  #[test]
+  fn lexes_adjacent_tokens_without_whitespace() {
+    Test::new()
+      .input("foo{bar}(1);")
+      .expected([
+        (Token::Identifier("foo".to_string()), 0..3),
+        (Token::LBrace, 3..4),
+        (Token::Identifier("bar".to_string()), 4..7),
+        (Token::RBrace, 7..8),
+        (Token::LParen, 8..9),
+        (Token::Integer("1".to_string()), 9..10),
+        (Token::RParen, 10..11),
+        (Token::Semicolon, 11..12),
+      ])
+      .run();
+  }
+
+  #[test]
   fn numbers_strings_operators_and_punctuation() {
     Test::new()
       .input(
@@ -296,42 +341,6 @@ mod tests {
         (Token::RParen, 131..132),
         (Token::Comma, 133..134),
         (Token::Semicolon, 135..136),
-      ])
-      .run();
-  }
-
-  #[test]
-  fn invalid_input_reports_errors() {
-    let (tokens, errors) = super::lex("@");
-
-    assert_eq!(tokens, None);
-
-    let actual = errors
-      .into_iter()
-      .map(|error| error.to_string())
-      .collect::<Vec<_>>();
-
-    assert_eq!(
-      actual,
-      vec![
-        "found '@' expected ' ', '\t', '\r', '\n', '#', identifier, '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', non-zero digit, ''', '\"', '+', '-', '*', '/', '%', '^', '|', '&', '!', '<', '=', '>', '?', ':', '~', '$', '{', '}', '[', ']', '(', ')', ',', ';', or end of input".to_string(),
-      ],
-    );
-  }
-
-  #[test]
-  fn lexes_adjacent_tokens_without_whitespace() {
-    Test::new()
-      .input("foo{bar}(1);")
-      .expected([
-        (Token::Identifier("foo".to_string()), 0..3),
-        (Token::LBrace, 3..4),
-        (Token::Identifier("bar".to_string()), 4..7),
-        (Token::RBrace, 7..8),
-        (Token::LParen, 8..9),
-        (Token::Integer("1".to_string()), 9..10),
-        (Token::RParen, 10..11),
-        (Token::Semicolon, 11..12),
       ])
       .run();
   }
