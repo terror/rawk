@@ -2,13 +2,104 @@ use super::*;
 
 pub(crate) type ParseError<'src> = Rich<'src, Token, Span>;
 
-fn atom_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+type ParseExtra<'src> = extra::Err<ParseError<'src>>;
+
+trait ParserInput<'src>: ValueInput<'src, Token = Token, Span = Span> {}
+
+impl<'src, I> ParserInput<'src> for I where
+  I: ValueInput<'src, Token = Token, Span = Span>
+{
+}
+
+trait BlockParser<'src, I>:
+  Parser<'src, I, Block, ParseExtra<'src>> + Clone + 'src
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> BlockParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Block, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait ExprListParser<'src, I>:
+  Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> ExprListParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait ExprParser<'src, I>:
+  Parser<'src, I, Expression, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> ExprParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, Expression, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait OutputRedirectionParser<'src, I>:
+  Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> OutputRedirectionParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait StatementParser<'src, I>:
+  Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> StatementParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+trait StringParser<'src, I>:
+  Parser<'src, I, String, ParseExtra<'src>> + Clone + 'src
+where
+  I: ParserInput<'src>,
+{
+}
+
+impl<'src, I, P> StringParser<'src, I> for P
+where
+  I: ParserInput<'src>,
+  P: Parser<'src, I, String, ParseExtra<'src>> + Clone + 'src,
+{
+}
+
+fn atom_parser<'src, I>(
+  expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
+where
+  I: ParserInput<'src>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
@@ -81,22 +172,12 @@ where
 }
 
 fn block_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  output_redirection: impl Parser<
-    'src,
-    I,
-    OutputRedirection,
-    extra::Err<ParseError<'src>>,
-  > + Clone
-  + 'src,
-) -> impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  expr_list: impl ExprListParser<'src, I>,
+  output_redirection: impl OutputRedirectionParser<'src, I>,
+) -> impl Parser<'src, I, Block, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   recursive(|block| {
     let statement = recursive(|statement| {
@@ -119,13 +200,12 @@ where
       .map(|items| Block { items })
   })
 }
+
 fn expr_list_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Vec<Expression>, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   expr
     .separated_by(just(Token::Comma))
@@ -133,15 +213,42 @@ where
     .at_least(1)
     .collect::<Vec<_>>()
 }
+
 fn expression_parser<'src, I>()
--> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+-> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   recursive(|expr| {
-    let atom = atom_parser(expr.clone());
+    let atom = atom_parser(expr.clone()).boxed();
 
-    let pratt_expr = pratt_parser(atom);
+    let additive_expr = parser_additive_pratt(atom).boxed();
+
+    let concat_start = choice((
+      select! { Token::Identifier(_) => () },
+      select! { Token::Number(_) => () },
+      select! { Token::String(_) => () },
+      select! { Token::Regex(_) => () },
+      just(Token::LParen).ignored(),
+      just(Token::Getline).ignored(),
+      just(Token::Dollar).ignored(),
+      just(Token::PlusPlus).ignored(),
+      just(Token::MinusMinus).ignored(),
+    ));
+
+    let concat_expr = additive_expr
+      .clone()
+      .foldl(
+        additive_expr.and_is(concat_start).repeated(),
+        |left, right| Expression::Binary {
+          left: Box::new(left),
+          operator: BinaryOp::Concat,
+          right: Box::new(right),
+        },
+      )
+      .boxed();
+
+    let pratt_expr = parser_logical_pratt(concat_expr).boxed();
 
     let ternary_expr = pratt_expr.clone().foldl(
       just(Token::Question)
@@ -178,17 +285,14 @@ where
     )
   })
 }
+
 fn if_statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  block: impl BlockParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   just(Token::If)
     .ignore_then(
@@ -215,11 +319,12 @@ where
       then_branch,
     })
 }
+
 fn output_redirection_parser<'src, I>(
-  string: impl Parser<'src, I, String, extra::Err<ParseError<'src>>> + Clone + 'src,
-) -> impl Parser<'src, I, OutputRedirection, extra::Err<ParseError<'src>>> + Clone
+  string: impl StringParser<'src, I>,
+) -> impl Parser<'src, I, OutputRedirection, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   choice((
     just(Token::GreaterGreater)
@@ -233,6 +338,7 @@ where
       .map(OutputRedirection::Pipe),
   ))
 }
+
 pub(crate) fn parse(
   tokens: Option<Vec<Spanned<Token>>>,
   source_len: usize,
@@ -257,10 +363,10 @@ pub(crate) fn parse(
       .collect(),
   )
 }
-fn parser<'src, I>()
--> impl Parser<'src, I, Program, extra::Err<ParseError<'src>>>
+
+fn parser<'src, I>() -> impl Parser<'src, I, Program, ParseExtra<'src>>
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let identifier = select! { Token::Identifier(identifier) => identifier };
 
@@ -314,13 +420,12 @@ where
     .then_ignore(end())
     .map(|items| Program { items })
 }
-fn pratt_parser<'src, I>(
-  atom: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>> + Clone
+
+fn parser_additive_pratt<'src, I>(
+  atom: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   macro_rules! binary {
     ($assoc:expr, $token:expr, $op:expr) => {
@@ -371,6 +476,26 @@ where
     binary!(left(8), Token::Percent, BinaryOp::Modulo),
     binary!(left(7), Token::Plus, BinaryOp::Add),
     binary!(left(7), Token::Minus, BinaryOp::Subtract),
+  ))
+}
+
+fn parser_logical_pratt<'src, I>(
+  concat_expr: impl ExprParser<'src, I>,
+) -> impl Parser<'src, I, Expression, ParseExtra<'src>> + Clone
+where
+  I: ParserInput<'src>,
+{
+  macro_rules! binary {
+    ($assoc:expr, $token:expr, $op:expr) => {
+      infix($assoc, just($token), |l, _, r, _| Expression::Binary {
+        left: Box::new(l),
+        operator: $op,
+        right: Box::new(r),
+      })
+    };
+  }
+
+  concat_expr.pratt((
     binary!(left(5), Token::Less, BinaryOp::Less),
     binary!(left(5), Token::LessEqual, BinaryOp::LessEqual),
     binary!(left(5), Token::EqualEqual, BinaryOp::Equal),
@@ -400,27 +525,16 @@ where
     }),
   ))
 }
+
 fn statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  expr_list: impl Parser<'src, I, Vec<Expression>, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  output_redirection: impl Parser<
-    'src,
-    I,
-    OutputRedirection,
-    extra::Err<ParseError<'src>>,
-  > + Clone
-  + 'src,
-  block: impl Parser<'src, I, Block, extra::Err<ParseError<'src>>> + Clone + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  expr_list: impl ExprListParser<'src, I>,
+  output_redirection: impl OutputRedirectionParser<'src, I>,
+  block: impl BlockParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let print_item = just(Token::Print)
     .ignore_then(expr_list.clone())
@@ -511,16 +625,13 @@ where
   ))
   .then_ignore(just(Token::Semicolon).repeated())
 }
+
 fn switch_statement_parser<'src, I>(
-  expr: impl Parser<'src, I, Expression, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-  statement: impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>>
-  + Clone
-  + 'src,
-) -> impl Parser<'src, I, BlockItem, extra::Err<ParseError<'src>>> + Clone
+  expr: impl ExprParser<'src, I>,
+  statement: impl StatementParser<'src, I>,
+) -> impl Parser<'src, I, BlockItem, ParseExtra<'src>> + Clone
 where
-  I: ValueInput<'src, Token = Token, Span = Span>,
+  I: ParserInput<'src>,
 {
   let switch_label = choice((
     just(Token::Case)
@@ -551,6 +662,7 @@ where
     )
     .map(|(expression, cases)| BlockItem::Switch { cases, expression })
 }
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -761,6 +873,29 @@ mod tests {
               operator: AssignOp::Add,
               target: Box::new(Expression::Identifier("a".to_string())),
               value: Box::new(Expression::Number("1".to_string())),
+            })],
+          },
+          pattern: None,
+        })],
+      })
+      .run();
+  }
+
+  #[test]
+  fn parses_concatenation_expression() {
+    Test::new()
+      .input("{ a b < c }")
+      .expected(Program {
+        items: vec![TopLevelItem::PatternAction(PatternAction {
+          action: Block {
+            items: vec![BlockItem::Expression(Expression::Binary {
+              left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Identifier("a".to_string())),
+                operator: BinaryOp::Concat,
+                right: Box::new(Expression::Identifier("b".to_string())),
+              }),
+              operator: BinaryOp::Less,
+              right: Box::new(Expression::Identifier("c".to_string())),
             })],
           },
           pattern: None,

@@ -13,6 +13,7 @@ pub(crate) enum AssignOp {
 pub(crate) enum BinaryOp {
   Add,
   And,
+  Concat,
   Divide,
   Equal,
   Greater,
